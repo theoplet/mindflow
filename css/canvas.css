@@ -1,0 +1,630 @@
+/* ==========================================================================
+   MindFlow Canvas & Nodes Styles (canvas.css)
+   ========================================================================== */
+
+/* 1. Canvas container */
+#mindmap-canvas {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+  background-image: radial-gradient(var(--color-border) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: 0 0;
+  cursor: default;
+  z-index: var(--z-canvas);
+}
+
+#mindmap-canvas:active {
+  cursor: grabbing;
+}
+
+/* 2. Canvas transform layer */
+#canvas-transform {
+  width: 100%;
+  height: 100%;
+  transform-origin: 0 0;
+  will-change: transform;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* 10. SVG Connectors & Nodes Layering */
+#svg-connectors {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 1;
+}
+
+#nodes-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.katex-rendered {
+  pointer-events: none;
+}
+.katex-block {
+  margin: 4px 0 !important;
+  max-height: 250px;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding-right: 5px; /* for scrollbar */
+}
+/* Subtle, fading scrollbar for long formulas */
+.katex-block::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+  background-color: transparent;
+}
+.katex-block::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.2);
+  border-radius: 4px;
+}
+.katex-block:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.6);
+}
+.editing .katex-rendered {
+  pointer-events: auto;
+}
+
+.connector-path {
+  pointer-events: stroke;
+  fill: none;
+  stroke: var(--color-border);
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0.6;
+  transition: stroke var(--transition-normal);
+}
+
+.connector-path.active {
+  stroke: var(--color-primary);
+  opacity: 0.8;
+}
+
+/* 3. Mindmap nodes */
+.mindmap-node {
+  pointer-events: auto;
+  position: absolute;
+  background-color: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 6px 14px;
+  min-width: 80px;
+  max-width: none;
+  box-sizing: border-box;
+  font-size: var(--text-base);
+  color: var(--color-text);
+  cursor: pointer;
+  user-select: none;
+  box-shadow: var(--shadow-sm);
+  transition: left 0.3s cubic-bezier(0.16, 1, 0.3, 1), top 0.3s cubic-bezier(0.16, 1, 0.3, 1), width 0.3s ease, height 0.3s ease, box-shadow var(--transition-fast), border-color var(--transition-fast);
+  will-change: left, top, width, height;
+  z-index: var(--z-nodes);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  touch-action: none;
+  overflow: visible;
+}
+
+.node-header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+/* 4. Node states */
+.mindmap-node:hover {
+  box-shadow: var(--shadow-md);
+  z-index: calc(var(--z-nodes) + 1);
+}
+
+.mindmap-node.selected {
+  border-color: #8B5CF6 !important;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.4), 0 0 18px rgba(139, 92, 246, 0.65) !important;
+  z-index: calc(var(--z-nodes) + 10);
+}
+
+.mindmap-node.editing {
+  border-color: var(--color-secondary);
+  cursor: text;
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.4), 0 0 18px rgba(168, 85, 247, 0.65);
+}
+
+.mindmap-node.dragging {
+  transition: none !important;
+  opacity: 0.85;
+  box-shadow: var(--shadow-lg);
+  z-index: 100 !important;
+  cursor: grabbing;
+  pointer-events: none !important;
+}
+
+.mindmap-node.root-node {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  background: var(--color-gradient);
+  color: #FFFFFF;
+  padding: 8px 20px;
+  border: none;
+  box-shadow: var(--shadow-md);
+}
+
+.node-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.node-icon-inline {
+  font-size: 1.25em;
+  line-height: 1;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+/* Corner Badges: Top-Left Icon Badge & Top-Right Note Badge */
+.node-icon-badge {
+  position: absolute;
+  top: -10px;
+  left: -8px;
+  font-size: 13px;
+  line-height: 1;
+  z-index: 30;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-primary);
+  border-radius: 50%;
+  padding: 4px;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  transition: transform var(--transition-fast);
+}
+
+.node-icon-badge:hover {
+  transform: scale(1.25);
+}
+
+.node-notes-badge {
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  font-size: 13px;
+  line-height: 1;
+  z-index: 30;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-primary);
+  border-radius: 50%;
+  padding: 4px;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  transition: transform var(--transition-fast), background var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.node-notes-badge:hover {
+  transform: scale(1.25);
+  background: var(--color-primary);
+  color: #FFFFFF;
+}
+
+.node-notes-popover {
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  left: auto;
+  transform: translateX(calc(100% + 8px));
+  min-width: 200px;
+  max-width: 320px;
+  background: rgba(15, 23, 42, 0.95) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1.5px solid var(--color-primary) !important;
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: var(--text-xs);
+  color: #F8FAFC !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5) !important;
+  z-index: 1000 !important;
+  display: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: auto;
+}
+
+.node-notes-popover.popover-left {
+  right: auto;
+  left: -8px;
+  transform: translateX(calc(-100% - 8px));
+}
+
+.node-notes-popover.open {
+  display: block;
+  animation: fadeIn 0.15s ease-out;
+}
+
+/* Node Resize Handle */
+.resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: calc(var(--z-nodes) + 5);
+}
+
+.resize-handle::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid var(--color-text-secondary);
+  border-bottom: 2px solid var(--color-text-secondary);
+}
+
+.mindmap-node:hover .resize-handle,
+.mindmap-node.selected .resize-handle {
+  opacity: 0.8;
+}
+
+/* 5. Node text */
+.node-text {
+  display: block;
+  text-align: left;
+  outline: none;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  tab-size: 4;
+  -moz-tab-size: 4;
+  flex: 1;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+  line-height: 1.5;
+  padding: 2px 0;
+}
+
+.mindmap-node.editing .node-text {
+  cursor: text;
+}
+
+/* 7. Collapse toggle (Outset, Faded & Separated) */
+.collapse-toggle {
+  position: absolute;
+  right: -24px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  opacity: 0.35;
+  backdrop-filter: blur(4px);
+  transition: opacity 0.2s ease, transform 0.2s ease, background-color 0.2s ease;
+  color: var(--color-text);
+  z-index: calc(var(--z-nodes) + 3);
+  box-shadow: var(--shadow-sm);
+}
+
+.collapse-toggle:hover {
+  opacity: 1.0;
+  background-color: var(--color-primary);
+  color: #FFFFFF;
+  border-color: var(--color-primary);
+  transform: translateY(-50%) scale(1.25);
+}
+
+/* 8. Child count badge */
+.child-count {
+  position: absolute;
+  right: -18px;
+  bottom: -10px;
+  background-color: var(--color-primary);
+  color: #FFFFFF;
+  font-size: 10px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  padding: 0 4px;
+  z-index: calc(var(--z-nodes) + 4);
+}
+
+/* 9. SVG Connectors & Path Customization */
+.connector-path {
+  fill: none;
+  stroke: var(--color-border);
+  stroke-linecap: round;
+  opacity: 0.85;
+  transition: stroke 0.2s, opacity 0.2s;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.connector-path:hover,
+.connector-path.selected-connector {
+  stroke: var(--color-secondary) !important;
+  opacity: 1 !important;
+  filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.6));
+}
+
+/* 10. Connecting Node Mode Highlight */
+.mindmap-node.connecting-source {
+  border: 2px dashed #A855F7 !important;
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.8) !important;
+  animation: pulseConnect 1.2s infinite ease-in-out;
+}
+
+@keyframes pulseConnect {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.connector-path.dashed {
+  stroke-dasharray: 8, 5;
+}
+
+.connector-path.dotted {
+  stroke-dasharray: 2, 5;
+}
+
+/* Image grid: max 3 per row with tight gap */
+.node-images-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  margin-bottom: 4px;
+  width: 100%;
+}
+.node-image-wrapper {
+  position: relative !important;
+  display: inline-block !important;
+  max-width: 100%;
+}
+.node-image-item {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  object-fit: contain;
+  border: 1px solid var(--color-border);
+}
+
+/* Collapse toggle - prevent text selection */
+.collapse-toggle {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* KaTeX Math Formula Rendering inside MindMap Nodes */
+.katex-display {
+  margin: 4px 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.katex {
+  font-size: 1.08em;
+  line-height: 1.25;
+}
+
+.node-text .katex-rendered {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 2px 4px;
+}
+
+/* Image sharpness & quality */
+.node-image-item {
+  max-width: 100%;
+  border-radius: 6px;
+  object-fit: contain;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+.node-text .katex-rendered.katex-block,
+.katex-display {
+  display: block !important;
+  width: 100%;
+  text-align: center;
+  margin: 6px 0;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  pointer-events: auto !important;
+  user-select: text !important;
+}
+
+.mindmap-node.has-math {
+  min-width: 480px !important;
+  max-width: 1250px !important;
+}
+
+.mindmap-node.has-math .node-text {
+  overflow: visible !important;
+  max-width: none !important;
+}
+
+/* Custom scrollbars for long math formulas & node content */
+.katex-rendered::-webkit-scrollbar,
+.katex-block::-webkit-scrollbar,
+.katex-display::-webkit-scrollbar,
+.node-text::-webkit-scrollbar {
+  height: 6px !important;
+  width: 6px !important;
+}
+
+.katex-rendered::-webkit-scrollbar-track,
+.katex-block::-webkit-scrollbar-track,
+.katex-display::-webkit-scrollbar-track,
+.node-text::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4) !important;
+  border-radius: 4px;
+}
+
+.katex-rendered::-webkit-scrollbar-thumb,
+.katex-block::-webkit-scrollbar-thumb,
+.katex-display::-webkit-scrollbar-thumb,
+.node-text::-webkit-scrollbar-thumb {
+  background: rgba(168, 85, 247, 0.6) !important;
+  border-radius: 4px;
+}
+
+.katex-rendered::-webkit-scrollbar-thumb:hover,
+.katex-block::-webkit-scrollbar-thumb:hover,
+.katex-display::-webkit-scrollbar-thumb:hover,
+.node-text::-webkit-scrollbar-thumb:hover {
+  background: rgba(168, 85, 247, 0.9) !important;
+}
+
+/* SVG Connector Line Text Labels */
+.connector-label-group {
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.connector-label-bg {
+  fill: #0F172A;
+  stroke: var(--color-primary);
+  stroke-width: 1.2px;
+  rx: 5px;
+  ry: 5px;
+  transition: all var(--transition-fast);
+}
+
+.connector-label-text {
+  font-family: var(--font-family);
+  font-size: 11px;
+  font-weight: 600;
+  fill: #F8FAFC;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.connector-label-group:hover .connector-label-bg {
+  fill: #1E293B;
+  stroke: #A855F7;
+  filter: drop-shadow(0 2px 4px rgba(168, 85, 247, 0.4));
+}
+
+/* Image resize handle at bottom-right corner of node images */
+.node-image-wrapper {
+  position: relative !important;
+  display: inline-block !important;
+  max-width: 100%;
+}
+
+.img-resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  background: linear-gradient(135deg, #EC4899, #8B5CF6);
+  border: 1.5px solid #FFFFFF;
+  border-radius: 50%;
+  cursor: se-resize;
+  z-index: 25;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  opacity: 0.75;
+}
+
+.node-image-wrapper:hover .img-resize-handle,
+.img-resize-handle:hover {
+  opacity: 1;
+  transform: scale(1.35);
+}
+
+/* Inline Images inside node text and editor */
+.inline-editor-image {
+  max-width: 100%;
+  border-radius: var(--radius-sm, 4px);
+  display: inline-block;
+  vertical-align: middle;
+  margin: 4px 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease, outline 0.15s ease;
+}
+
+.inline-editor-image:hover {
+  outline: 2px solid var(--color-primary, #8B5CF6);
+}
+
+/* Free Connector Path (independent line connecting any two nodes) */
+.free-connector-path {
+  stroke: #38BDF8;
+  stroke-width: 2;
+  fill: none;
+  cursor: pointer;
+  transition: stroke 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease;
+  pointer-events: stroke;
+}
+
+.free-connector-path:hover {
+  stroke: #60A5FA !important;
+  stroke-width: 3.5 !important;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.75));
+}
+
+.free-connector-path.selected-connector {
+  stroke: #38BDF8 !important;
+  stroke-width: 3 !important;
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.9));
+}
+
+.free-connector-hit-area {
+  stroke: transparent;
+  stroke-width: 16;
+  fill: none;
+  opacity: 0;
+  pointer-events: stroke;
+  cursor: pointer;
+}

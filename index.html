@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="MindFlow — A beautiful, keyboard-first mind mapping web application. Create, organize, and visualize your ideas with ease.">
+  <meta name="theme-color" content="#0F0F23">
+  <link rel="icon" href="data:,">
+  <title>MindFlow — Visual Thinking, Simplified</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <!-- KaTeX CSS for Math Formula Rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="css/index.css?v=84.0">
+  <link rel="stylesheet" href="css/canvas.css?v=84.0">
+  <link rel="stylesheet" href="css/toolbar.css?v=84.0">
+  <link rel="stylesheet" href="css/animations.css?v=84.0">
+
+  <style>
+    /* Additional inline styles */
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: var(--text-lg);
+      background: linear-gradient(135deg, #6C5CE7, #A855F7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      user-select: none;
+      cursor: default;
+      white-space: nowrap;
+    }
+    .logo-icon {
+      font-size: 20px;
+      -webkit-text-fill-color: initial;
+    }
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .toolbar-btn svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    /* Drop target highlight for drag & drop */
+    .mindmap-node.drop-target {
+      border-color: var(--color-secondary) !important;
+      box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.3) !important;
+    }
+    .toolbar-btn[data-tooltip] {
+      position: relative;
+    }
+    .toolbar-btn[data-tooltip]:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 4px 10px;
+      background: var(--color-surface);
+      color: var(--color-text);
+      font-size: var(--text-xs);
+      font-weight: 500;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--color-border);
+      white-space: nowrap;
+      z-index: 1200;
+      pointer-events: none;
+      box-shadow: var(--shadow-md);
+    }
+    
+    /* Status bar */
+    #status-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 28px;
+      background: var(--color-surface);
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      z-index: var(--z-toolbar);
+      user-select: none;
+    }
+    #status-bar .status-group {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    #status-bar .status-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .save-indicator {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #22C55E;
+      display: inline-block;
+    }
+    .save-indicator.unsaved {
+      background: #EAB308;
+    }
+
+    /* Map name editable */
+    #map-name {
+      background: transparent;
+      border: none;
+      color: var(--color-text);
+      font-size: var(--text-sm);
+      font-weight: 500;
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      outline: none;
+      max-width: 200px;
+    }
+    #map-name:hover {
+      background: var(--color-surface-hover);
+    }
+    #map-name:focus {
+      background: var(--color-surface-hover);
+      box-shadow: 0 0 0 2px var(--color-primary);
+    }
+
+    /* AI modal specific styles */
+    .ai-prompt-area {
+      width: 100%;
+      min-height: 80px;
+      padding: 12px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-family: 'Inter', sans-serif;
+      font-size: var(--text-sm);
+      resize: vertical;
+      outline: none;
+    }
+    .ai-prompt-area:focus {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.2);
+    }
+    .ai-api-key-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 12px;
+    }
+    .ai-api-key-row .input {
+      flex: 1;
+    }
+    .ai-status {
+      margin-top: 12px;
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      min-height: 20px;
+    }
+
+    /* Shortcuts modal table */
+    .shortcuts-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .shortcuts-table td {
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--color-border);
+      font-size: var(--text-sm);
+    }
+    .shortcuts-table td:first-child {
+      font-weight: 500;
+      white-space: nowrap;
+      color: var(--color-text-secondary);
+    }
+    .shortcuts-table .section-header {
+      font-weight: 700;
+      color: var(--color-primary);
+      padding-top: 12px;
+      border-bottom: none;
+    }
+    kbd {
+      display: inline-block;
+      padding: 2px 6px;
+      background: var(--color-surface-hover);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      min-width: 20px;
+      text-align: center;
+    }
+
+    /* Map list modal */
+    .map-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .map-list-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: background var(--transition-fast);
+    }
+    .map-list-item:hover {
+      background: var(--color-surface-hover);
+    }
+    .map-list-item .map-info {
+      flex: 1;
+    }
+    .map-list-item .map-name {
+      font-weight: 500;
+      font-size: var(--text-sm);
+    }
+    .map-list-item .map-date {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: 2px;
+    }
+    .map-list-item .map-actions {
+      display: flex;
+      gap: 4px;
+    }
+    .map-list-empty {
+      text-align: center;
+      padding: 32px 16px;
+      color: var(--color-text-muted);
+      font-size: var(--text-sm);
+    }
+    
+    /* Export option cards */
+    .export-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 16px 0;
+    }
+    .export-option {
+      padding: 16px;
+      border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      text-align: center;
+    }
+    .export-option:hover {
+      border-color: var(--color-primary);
+      background: var(--color-surface-hover);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+    .export-option.selected {
+      border-color: var(--color-primary);
+      background: rgba(108, 92, 231, 0.1);
+    }
+    .export-option-icon {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+    .export-option-name {
+      font-weight: 600;
+      font-size: var(--text-sm);
+    }
+    .export-option-desc {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: 4px;
+    }
+
+    /* Language toggle indicator */
+    .lang-indicator {
+      font-size: var(--text-xs);
+      font-weight: 700;
+      color: var(--color-primary);
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ==================== TOOLBAR ==================== -->
+  <div id="toolbar" class="toolbar">
+    <div class="logo">
+      <span class="logo-icon">🧠</span>
+      <span>MindFlow</span>
+    </div>
+    <div class="toolbar-separator"></div>
+
+    <!-- Map name -->
+    <input type="text" id="map-name" value="Untitled Map" spellcheck="false" data-i18n-placeholder="map.untitled">
+
+    <div class="toolbar-separator"></div>
+
+    <!-- File operations -->
+    <div class="toolbar-group">
+      <button id="btn-new-map" class="toolbar-btn" data-tooltip="New Map" data-i18n-title="toolbar.newMap">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      </button>
+      <button id="btn-open-map" class="toolbar-btn" data-tooltip="Open" data-i18n-title="toolbar.openMap">
+        <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </button>
+      <button id="btn-save-map" class="toolbar-btn" data-tooltip="Save (Ctrl+S)" data-i18n-title="toolbar.save">
+        <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <!-- Edit operations -->
+    <div class="toolbar-group">
+      <button id="btn-add-central-topic" class="toolbar-btn" data-tooltip="+ Central Topic" data-i18n-title="toolbar.addCentralTopic" style="color: #A855F7;">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      </button>
+      <button id="btn-add-child" class="toolbar-btn" data-tooltip="Add Child (Tab)" data-i18n-title="toolbar.addChild" style="color: var(--color-primary);">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button id="btn-add-sibling" class="toolbar-btn" data-tooltip="Add Sibling" data-i18n-title="toolbar.addSibling">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      </button>
+      <button id="btn-delete-node" class="toolbar-btn" data-tooltip="Delete Node (Del)" data-i18n-title="toolbar.deleteNode" style="color: #EF4444;">
+        <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+      <button id="btn-math-editor" class="toolbar-btn" data-tooltip="Math Formula ($\sum$)" style="color: #EC4899; font-weight: 700; font-size: 15px;">
+        ∑
+      </button>
+      <button id="btn-add-image" class="toolbar-btn" data-tooltip="Chèn Hình Ảnh vào Node (4K/UHD)" style="color: #10B981; font-size: 16px;">
+        🖼️
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <!-- Line & Formatting operations -->
+    <div class="toolbar-group">
+      <button id="btn-draw-free-line" class="toolbar-btn" data-tooltip="Vẽ Line tự do nối 2 Node" title="Vẽ Line tự do nối 2 Node" style="color: #38BDF8;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19L20 5M20 5h-6M20 5v6"/><circle cx="4" cy="19" r="2.5" fill="currentColor"/><circle cx="20" cy="5" r="2.5" fill="currentColor"/></svg>
+      </button>
+      <button id="btn-select-all-lines" class="toolbar-btn" data-tooltip="Select All Lines" data-i18n-title="toolbar.selectAllLines" style="color: #06B6D4;">
+        <svg viewBox="0 0 24 24"><path d="M4 12h16M4 6h16M4 18h16" stroke-dasharray="3 3"/></svg>
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <!-- Undo / Redo -->
+    <div class="toolbar-group">
+      <button id="btn-undo" class="toolbar-btn" data-tooltip="Undo (Ctrl+Z)" data-i18n-title="toolbar.undo">
+        <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+      </button>
+      <button id="btn-redo" class="toolbar-btn" data-tooltip="Redo (Ctrl+Y)" data-i18n-title="toolbar.redo">
+        <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <!-- AI -->
+    <button id="btn-ai" class="toolbar-btn" data-tooltip="AI Assistant" data-i18n-title="toolbar.ai" style="color: var(--color-secondary);">
+      <svg viewBox="0 0 24 24"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27A7 7 0 0 1 14 23h-4a7 7 0 0 1-6.73-4H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/><circle cx="9.5" cy="15.5" r="1"/><circle cx="14.5" cy="15.5" r="1"/></svg>
+    </button>
+
+    <div class="toolbar-separator"></div>
+
+    <!-- Export / Import -->
+    <div class="toolbar-group">
+      <button id="btn-export" class="toolbar-btn" data-tooltip="Export (Ctrl+E)" data-i18n-title="toolbar.export">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
+      <button id="btn-import" class="toolbar-btn" data-tooltip="Import" data-i18n-title="toolbar.import">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </button>
+      <button id="btn-gdrive" class="toolbar-btn" data-tooltip="Google Drive" data-i18n-title="toolbar.gdrive" style="color: #4285F4;">
+        <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.78c0-2.33 4.67-3.5 7-3.5s7 1.17 7 3.5V19z"/></svg>
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <!-- View controls -->
+    <div class="toolbar-group">
+      <button id="btn-auto-layout" class="toolbar-btn active-toggle" data-tooltip="Smart Auto-Layout (Toggle)" data-i18n-title="toolbar.autoLayout">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+      </button>
+      <button id="btn-fit-view" class="toolbar-btn" data-tooltip="Fit to View (Ctrl+0)" data-i18n-title="toolbar.fitView">
+        <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+      </button>
+      <button id="btn-center-root" class="toolbar-btn" data-tooltip="Center on Root" data-i18n-title="toolbar.centerRoot">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <!-- Settings -->
+    <div class="toolbar-group">
+      <button id="btn-theme" class="toolbar-btn" data-tooltip="Toggle Theme" data-i18n-title="toolbar.theme">
+        <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <button id="btn-lang" class="toolbar-btn" data-tooltip="Language">
+        <span class="lang-indicator" id="lang-label">EN</span>
+      </button>
+      <button id="btn-shortcuts" class="toolbar-btn" data-tooltip="Shortcuts (?)" data-i18n-title="toolbar.shortcuts">
+        <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="8"/><line x1="10" y1="8" x2="10" y2="8"/><line x1="14" y1="8" x2="14" y2="8"/><line x1="18" y1="8" x2="18" y2="8"/><line x1="6" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="18" y2="12"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== CANVAS ==================== -->
+  <div id="mindmap-canvas">
+    <div id="canvas-transform">
+      <svg id="svg-connectors" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow-end" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="12" markerHeight="12" orient="auto">
+            <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="currentColor" />
+          </marker>
+          <marker id="arrow-start" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="12" markerHeight="12" orient="auto">
+            <path d="M 10 1.5 L 0 5 L 10 8.5 z" fill="currentColor" />
+          </marker>
+        </defs>
+      </svg>
+      <div id="nodes-container"></div>
+    </div>
+  </div>
+
+
+
+  <!-- ==================== ZOOM CONTROLS ==================== -->
+  <div id="zoom-controls">
+    <button id="btn-zoom-out" class="toolbar-btn" data-tooltip="Zoom Out">
+      <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <span id="zoom-level" style="font-size: var(--text-xs); min-width: 40px; text-align: center; color: var(--color-text-secondary);">100%</span>
+    <button id="btn-zoom-in" class="toolbar-btn" data-tooltip="Zoom In">
+      <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+  </div>
+
+  <!-- ==================== PROPERTIES PANEL ==================== -->
+  <div id="properties-panel" class="properties-panel">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h3 style="margin: 0; font-size: var(--text-base); font-weight: 600;" data-i18n="props.title">Properties</h3>
+      <button id="btn-close-props" class="toolbar-btn" style="width: 28px; height: 28px;">
+        <svg viewBox="0 0 24 24" style="width: 14px; height: 14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <!-- Color picker -->
+    <div class="prop-group">
+      <label data-i18n="props.color">Color</label>
+      <div class="color-picker" id="color-picker">
+        <div class="color-swatch" data-color="#6C5CE7" style="background: #6C5CE7;" title="Purple"></div>
+        <div class="color-swatch" data-color="#3B82F6" style="background: #3B82F6;" title="Blue"></div>
+        <div class="color-swatch" data-color="#14B8A6" style="background: #14B8A6;" title="Teal"></div>
+        <div class="color-swatch" data-color="#22C55E" style="background: #22C55E;" title="Green"></div>
+        <div class="color-swatch" data-color="#EAB308" style="background: #EAB308;" title="Yellow"></div>
+        <div class="color-swatch" data-color="#F97316" style="background: #F97316;" title="Orange"></div>
+        <div class="color-swatch" data-color="#EF4444" style="background: #EF4444;" title="Red"></div>
+        <div class="color-swatch" data-color="#EC4899" style="background: #EC4899;" title="Pink"></div>
+      </div>
+    </div>
+
+    <!-- Icon picker -->
+    <div class="prop-group">
+      <label data-i18n="props.icon">Icon</label>
+      <div class="icon-picker" id="icon-picker">
+        <div class="icon-option" data-icon="">✖</div>
+        <div class="icon-option" data-icon="💡">💡</div>
+        <div class="icon-option" data-icon="🎯">🎯</div>
+        <div class="icon-option" data-icon="🔥">🔥</div>
+        <div class="icon-option" data-icon="⭐">⭐</div>
+        <div class="icon-option" data-icon="❤️">❤️</div>
+        <div class="icon-option" data-icon="🚀">🚀</div>
+        <div class="icon-option" data-icon="✅">✅</div>
+        <div class="icon-option" data-icon="⚡">⚡</div>
+        <div class="icon-option" data-icon="📌">📌</div>
+        <div class="icon-option" data-icon="🔑">🔑</div>
+        <div class="icon-option" data-icon="📝">📝</div>
+        <div class="icon-option" data-icon="💎">💎</div>
+        <div class="icon-option" data-icon="🎨">🎨</div>
+        <div class="icon-option" data-icon="🧠">🧠</div>
+        <div class="icon-option" data-icon="📊">📊</div>
+        <div class="icon-option" data-icon="🔒">🔒</div>
+        <div class="icon-option" data-icon="🌍">🌍</div>
+      </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="prop-group">
+      <label data-i18n="props.notes">Notes</label>
+      <textarea id="node-notes" class="ai-prompt-area" style="min-height: 60px;" data-i18n-placeholder="props.notesPlaceholder" placeholder="Add notes..."></textarea>
+    </div>
+  </div>
+
+  <!-- ==================== CONTEXT MENU ==================== -->
+  <div id="context-menu" class="toolbar-dropdown" style="position: fixed; z-index: 1000;">
+    <div class="dropdown-item" data-action="addChild"><span>➕</span><span data-i18n="context.addChild">Add Child Node</span><span class="shortcut">Tab</span></div>
+    <div class="dropdown-item" data-action="addSibling"><span>➕</span><span data-i18n="context.addSibling">Add Sibling Node</span><span class="shortcut">Enter</span></div>
+    <div class="dropdown-item" data-action="connect"><span>🔗</span><span>Nối Node (Connect)</span></div>
+    <div class="dropdown-item" data-action="freeline"><span>↗️</span><span>Vẽ Line tự do (Free Line)</span></div>
+    <div class="dropdown-item" data-action="edit"><span>✏️</span><span data-i18n="context.edit">Edit Text</span><span class="shortcut">Space</span></div>
+    <div style="height: 1px; background: var(--color-border); margin: 4px 6px;"></div>
+    <div class="dropdown-item" data-action="color"><span>🎨</span><span data-i18n="context.color">Change Color</span></div>
+    <div class="dropdown-item" data-action="icon"><span>😀</span><span data-i18n="context.icon">Set Icon</span></div>
+    <div class="dropdown-item" data-action="image"><span>🖼️</span><span>Chèn Hình Ảnh (Add Image)</span></div>
+    <div class="dropdown-item" data-action="notes"><span>📝</span><span>Add/Edit Notes</span></div>
+    <div class="dropdown-item" data-action="math"><span>∑</span><span>Chèn Công Thức Math</span></div>
+    <div class="dropdown-item" data-action="collapse"><span>📁</span><span id="ctx-collapse-text" data-i18n="context.collapse">Collapse Branch</span><span class="shortcut">/</span></div>
+    <div style="height: 1px; background: var(--color-border); margin: 4px 6px;"></div>
+    <div class="dropdown-item" data-action="copy"><span>📋</span><span data-i18n="context.copy">Copy Branch</span><span class="shortcut">Ctrl+C</span></div>
+    <div class="dropdown-item" data-action="paste"><span>📄</span><span data-i18n="context.paste">Paste Branch</span><span class="shortcut">Ctrl+V</span></div>
+    <div class="dropdown-item" data-action="resetPosition"><span>📍</span><span data-i18n="toolbar.autoLayout">Auto-Layout Node</span></div>
+    <div class="dropdown-item" data-action="autofitNode"><span>📐</span><span data-i18n="context.autofit">Auto-Fit Kích Thước Node</span></div>
+    <div style="height: 1px; background: var(--color-border); margin: 4px 6px;"></div>
+    <div class="dropdown-item" data-action="delete" style="color: #EF4444;"><span>🗑️</span><span data-i18n="context.delete">Delete Node</span><span class="shortcut">Del</span></div>
+  </div>
+
+  <!-- ==================== RIGHT-SIDE NODE EDITOR PANEL ==================== -->
+  <div id="right-editor-panel" class="right-editor-drawer">
+    <div class="right-editor-header">
+      <div class="right-editor-title">
+        <span style="font-size: 18px;">✏️</span>
+        <span style="font-weight: 700; font-size: 15px; color: #F8FAFC;">Chỉnh Sửa Node</span>
+      </div>
+      <button id="btn-close-right-editor" class="toolbar-btn modal-close-btn" title="Đóng">
+        <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <div class="right-editor-body">
+      <!-- Full MS Word Style Formatting Toolbar -->
+      <div class="right-formatting-toolbar">
+        <div class="fmt-row">
+          <select id="right-fmt-font-family" class="fmt-select" title="Font Family">
+            <option value="Inter">Inter</option>
+            <option value="Roboto">Roboto</option>
+            <option value="Arial">Arial</option>
+            <option value="Times New Roman">Times New Roman</option>
+            <option value="Courier New">Courier New</option>
+            <option value="Georgia">Georgia</option>
+          </select>
+          <select id="right-fmt-font-size" class="fmt-select fmt-select-sm" title="Font Size">
+            <option value="12">12px</option>
+            <option value="14" selected>14px</option>
+            <option value="16">16px</option>
+            <option value="18">18px</option>
+            <option value="20">20px</option>
+            <option value="24">24px</option>
+            <option value="28">28px</option>
+            <option value="32">32px</option>
+          </select>
+          <button id="right-fmt-font-grow" class="fmt-btn" title="Tăng cỡ chữ">A+</button>
+          <button id="right-fmt-font-shrink" class="fmt-btn" title="Giảm cỡ chữ">A-</button>
+
+          <div style="width: 1px; height: 20px; background: var(--color-border); margin: 0 2px;"></div>
+
+          <button id="right-fmt-undo" class="fmt-btn" title="Hoàn tác trong Text (Ctrl+Z)" disabled>↩</button>
+          <button id="right-fmt-redo" class="fmt-btn" title="Làm lại trong Text (Ctrl+Y)" disabled>↪</button>
+        </div>
+
+        <div class="fmt-row">
+          <button id="right-fmt-bold" class="fmt-btn" title="In đậm (Bold)"><b>B</b></button>
+          <button id="right-fmt-italic" class="fmt-btn" title="In nghiêng (Italic)"><i>I</i></button>
+          <button id="right-fmt-underline" class="fmt-btn" title="Gạch chân (Underline)"><u>U</u></button>
+          <button id="right-fmt-strike" class="fmt-btn" title="Gạch ngang (Strikethrough)"><s>S</s></button>
+
+          <div style="width: 1px; height: 20px; background: var(--color-border); margin: 0 2px;"></div>
+
+          <button id="right-fmt-bullet-list" class="fmt-btn" title="Danh sách dấu đầu dòng (• / * / -)">•≡</button>
+          <button id="right-fmt-numbered-list" class="fmt-btn" title="Danh sách số (1., 2.,...)">1.≡</button>
+          <button id="right-fmt-indent" class="fmt-btn" title="Thụt lề nhanh (Tab)">⇥</button>
+          <button id="right-fmt-outdent" class="fmt-btn" title="Lùi lề nhanh (Shift+Tab)">⇤</button>
+
+          <div style="width: 1px; height: 20px; background: var(--color-border); margin: 0 2px;"></div>
+
+          <button id="right-fmt-color-btn" class="fmt-btn" title="Màu chữ">🎨</button>
+          <button id="right-fmt-highlight-btn" class="fmt-btn" title="Màu nền Highlight">🖍️</button>
+
+          <div style="width: 1px; height: 20px; background: var(--color-border); margin: 0 2px;"></div>
+
+          <button id="right-fmt-align-left" class="fmt-btn" title="Căn trái">⬅️</button>
+          <button id="right-fmt-align-center" class="fmt-btn" title="Căn giữa">↔️</button>
+          <button id="right-fmt-align-right" class="fmt-btn" title="Căn phải">➡️</button>
+        </div>
+
+        <div class="fmt-row" style="margin-top: 4px;">
+          <button id="right-fmt-math-btn" class="fmt-btn fmt-btn-action" title="Chèn công thức toán LaTeX (Math Equation)">
+            <span style="color: #EC4899; font-weight: 700;">∑</span>
+            <span>Chèn Công Thức Math</span>
+          </button>
+          <button id="right-fmt-image-btn" class="fmt-btn fmt-btn-action" title="Chèn / Dán hình ảnh (Upload or Paste Image)">
+            <span style="color: #3B82F6;">📷</span>
+            <span>Chèn / Dán Ảnh</span>
+          </button>
+          <input type="file" id="right-image-input" accept="image/*" style="display: none;" multiple>
+        </div>
+
+        <!-- Color Swatch Palettes -->
+        <div id="right-color-palette" class="color-palette-dropdown hidden">
+          <div class="palette-swatch" data-color="inherit" style="background: #F8FAFC;" title="Default"></div>
+          <div class="palette-swatch" data-color="#EF4444" style="background: #EF4444;" title="Red"></div>
+          <div class="palette-swatch" data-color="#F97316" style="background: #F97316;" title="Orange"></div>
+          <div class="palette-swatch" data-color="#EAB308" style="background: #EAB308;" title="Yellow"></div>
+          <div class="palette-swatch" data-color="#10B981" style="background: #10B981;" title="Green"></div>
+          <div class="palette-swatch" data-color="#3B82F6" style="background: #3B82F6;" title="Blue"></div>
+          <div class="palette-swatch" data-color="#8B5CF6" style="background: #8B5CF6;" title="Purple"></div>
+          <div class="palette-swatch" data-color="#EC4899" style="background: #EC4899;" title="Pink"></div>
+        </div>
+
+        <div id="right-highlight-palette" class="color-palette-dropdown hidden">
+          <div class="palette-swatch" data-highlight="none" style="background: transparent; border: 1px dashed #94A3B8;" title="None"></div>
+          <div class="palette-swatch" data-highlight="#FEF08A" style="background: #FEF08A;" title="Yellow"></div>
+          <div class="palette-swatch" data-highlight="#BBF7D0" style="background: #BBF7D0;" title="Green"></div>
+          <div class="palette-swatch" data-highlight="#FBCFE8" style="background: #FBCFE8;" title="Pink"></div>
+          <div class="palette-swatch" data-highlight="#BAE6FD" style="background: #BAE6FD;" title="Blue"></div>
+          <div class="palette-swatch" data-highlight="#FED7AA" style="background: #FED7AA;" title="Orange"></div>
+        </div>
+      </div>
+
+      <!-- Rich Editor Content Editable Area -->
+      <div class="right-editor-area-wrapper">
+        <label class="editor-label">Văn bản & Nội dung Node (Hỗ trợ Paste ảnh Ctrl+V):</label>
+        <div id="right-editor-content" class="right-editor-content" contenteditable="true" placeholder="Nhập chữ, dán ảnh (Ctrl+V) hoặc chèn công thức toán..."></div>
+      </div>
+
+      <!-- Attached Images Gallery (Legacy / Hidden for Inline Editing) -->
+      <div class="right-images-section" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
+          <label class="editor-label" style="margin-bottom: 0;">Danh sách Hình ảnh đã chèn:</label>
+          <span style="font-size: 11px; color: #94A3B8; opacity: 0.85;">(Kéo thả hoặc bấm ◀ ▶ để đổi thứ tự)</span>
+        </div>
+        <div id="right-images-gallery" class="right-images-gallery"></div>
+      </div>
+    </div>
+
+    <div class="right-editor-footer">
+      <button id="btn-apply-right-editor" class="btn btn-primary btn-lg" style="flex: 1; background: linear-gradient(135deg, #8B5CF6, #EC4899); font-weight: 700;" title="Lưu nội dung vào node (giữ nguyên kích thước đã chỉnh nếu có)">
+        💾 <span data-i18n="editor.saveNode">Lưu vào Node</span>
+      </button>
+      <button id="btn-autofit-right-editor" class="btn btn-secondary btn-lg" style="padding: 10px 14px; background: rgba(139, 92, 246, 0.18); border: 1px solid #8B5CF6; color: #C4B5FD; font-weight: 600;" title="Tự động căn chỉnh kích thước node vừa khít với nội dung">
+        📐 <span data-i18n="editor.autofit">Auto-Fit</span>
+      </button>
+      <button id="btn-cancel-right-editor" class="btn btn-secondary" style="padding: 10px 16px;">
+        Hủy
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== EXPORT MODAL ==================== -->
+  <div id="export-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 data-i18n="export.title">Export Mind Map</h2>
+        <button class="toolbar-btn modal-close-btn">
+          <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="export-options">
+        <div class="export-option" data-format="mindflow" style="background: rgba(108, 92, 231, 0.15); border: 1px solid #6C5CE7;">
+          <div class="export-option-icon">⚡</div>
+          <div class="export-option-name">MINDFLOW</div>
+          <div class="export-option-desc">File Nén Gzip Siêu Nhẹ (.mindflow)</div>
+        </div>
+        <div class="export-option" data-format="png">
+          <div class="export-option-icon">🖼️</div>
+          <div class="export-option-name">PNG</div>
+          <div class="export-option-desc" data-i18n="export.png">PNG Image</div>
+        </div>
+        <div class="export-option" data-format="svg">
+          <div class="export-option-icon">📐</div>
+          <div class="export-option-name">SVG</div>
+          <div class="export-option-desc" data-i18n="export.svg">SVG Vector</div>
+        </div>
+        <div class="export-option" data-format="json">
+          <div class="export-option-icon">📦</div>
+          <div class="export-option-name">JSON</div>
+          <div class="export-option-desc" data-i18n="export.json">JSON Data</div>
+        </div>
+        <div class="export-option" data-format="markdown">
+          <div class="export-option-icon">📝</div>
+          <div class="export-option-name">Markdown</div>
+          <div class="export-option-desc" data-i18n="export.markdown">Markdown</div>
+        </div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+        <button class="btn btn-secondary modal-close-btn" data-i18n="export.cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== OPEN MAP MODAL ==================== -->
+  <div id="open-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 data-i18n="map.open">Open Map</h2>
+        <button class="toolbar-btn modal-close-btn">
+          <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div id="map-list" class="map-list">
+        <!-- Populated dynamically -->
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px;">
+        <button class="btn btn-secondary modal-close-btn" data-i18n="general.close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== AI MODAL ==================== -->
+  <div id="ai-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 data-i18n="ai.title">AI Mind Map Generator</h2>
+        <button class="toolbar-btn modal-close-btn">
+          <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <textarea id="ai-prompt" class="ai-prompt-area" data-i18n-placeholder="ai.prompt" placeholder="Describe your mind map topic..."></textarea>
+      <div class="ai-api-key-row">
+        <input type="password" id="ai-api-key" class="input" data-i18n-placeholder="ai.apiKeyPlaceholder" placeholder="Enter your Gemini API key">
+        <button id="btn-save-api-key" class="btn btn-secondary" data-i18n="ai.saveKey">Save Key</button>
+      </div>
+      <div id="ai-status" class="ai-status"></div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+        <button class="btn btn-secondary modal-close-btn" data-i18n="general.cancel">Cancel</button>
+        <button id="btn-ai-generate" class="btn btn-primary" data-i18n="ai.generate">Generate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== GOOGLE DRIVE MODAL ==================== -->
+  <div id="gdrive-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 data-i18n="gdrive.title">Google Drive Integration</h2>
+        <button class="toolbar-btn modal-close-btn">
+          <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- Account Status Badge -->
+      <div id="gdrive-account-status" style="margin-bottom: 16px; padding: 12px; border-radius: var(--radius-md); background: var(--color-bg); display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 24px;">📁</span>
+          <div>
+            <div id="gdrive-user-name" style="font-weight: 600; font-size: var(--text-sm);" data-i18n="gdrive.notConnected">Not connected to Google Drive</div>
+            <div id="gdrive-user-email" style="font-size: var(--text-xs); color: var(--color-text-muted);">Configure Client ID or Access Token</div>
+          </div>
+        </div>
+        <button id="btn-gdrive-auth" class="btn btn-primary" data-i18n="gdrive.connect">Connect</button>
+      </div>
+
+      <!-- User Guide Collapsible -->
+      <details style="margin-bottom: 16px; padding: 10px 12px; background: rgba(108, 92, 231, 0.08); border: 1px solid rgba(108, 92, 231, 0.2); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-text-secondary);">
+        <summary style="font-weight: 600; cursor: pointer; color: var(--color-primary);">📖 Hướng dẫn lấy Client ID hoặc Access Token (Bấm để xem)</summary>
+        <div style="margin-top: 10px; line-height: 1.6;">
+          <strong style="color: var(--color-text);">Cách 1: Lấy OAuth Client ID (Khuyên dùng - Đăng nhập 1-click):</strong>
+          <ol style="margin-left: 18px; margin-top: 4px; margin-bottom: 8px;">
+            <li>Truy cập <a href="https://console.cloud.google.com/" target="_blank" style="color: var(--color-primary); text-decoration: underline;">Google Cloud Console</a>.</li>
+            <li>Tạo một <strong>Project mới</strong> $\rightarrow$ Vào <strong>APIs & Services</strong> $\rightarrow$ <strong>Library</strong> $\rightarrow$ Bật <code>Google Drive API</code>.</li>
+            <li>Vào <strong>Credentials</strong> $\rightarrow$ Bấm <strong>Create Credentials</strong> $\rightarrow$ Chọn <strong>OAuth client ID</strong>.</li>
+            <li>Chọn Application type: <strong>Web application</strong>.</li>
+            <li>Tại <strong>Authorized JavaScript origins</strong>, thêm: <code>http://localhost:3000</code>.</li>
+            <li>Sao chép mã <strong>Client ID</strong> thu được dán vào ô "OAuth Client ID" bên dưới và bấm <strong>Save</strong>.</li>
+          </ol>
+          <strong style="color: var(--color-text);">Cách 2: Lấy Access Token Nhanh (Dùng ngay trong 1 phút):</strong>
+          <ol style="margin-left: 18px; margin-top: 4px;">
+            <li>Truy cập <a href="https://developers.google.com/oauthplayground/" target="_blank" style="color: var(--color-primary); text-decoration: underline;">Google OAuth 2.0 Playground</a>.</li>
+            <li>Ở danh sách bên trái, chọn <strong>Drive API v3</strong> $\rightarrow$ Đánh dấu chọn <code>https://www.googleapis.com/auth/drive.file</code>.</li>
+            <li>Bấm <strong>Authorize APIs</strong> và đăng nhập tài khoản Google.</li>
+            <li>Bấm <strong>Exchange authorization code for tokens</strong>.</li>
+            <li>Sao chép mã <strong>Access Token</strong> dán vào ô "Access Token (Direct)" bên dưới và bấm <strong>Use</strong>.</li>
+          </ol>
+        </div>
+      </details>
+
+      <!-- Settings / Tokens -->
+      <div class="prop-group">
+        <label data-i18n="gdrive.clientId">OAuth Client ID</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="gdrive-client-id" class="input" data-i18n-placeholder="gdrive.clientIdPlaceholder" placeholder="Enter Google OAuth Client ID...">
+          <button id="btn-save-gdrive-client-id" class="btn btn-secondary" data-i18n="gdrive.saveClientId">Save</button>
+        </div>
+      </div>
+
+      <div class="prop-group">
+        <label>Access Token (Direct)</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="password" id="gdrive-access-token" class="input" data-i18n-placeholder="gdrive.tokenPlaceholder" placeholder="Or paste Access Token directly...">
+          <button id="btn-save-gdrive-token" class="btn btn-secondary" data-i18n="gdrive.saveToken">Use</button>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px; border-top: 1px solid var(--color-border); padding-top: 16px;">
+        <button id="btn-gdrive-save-current" class="btn btn-primary" style="justify-content: center;" data-i18n="gdrive.save">☁️ Save Current Map to Drive (.mindflow)</button>
+        <button id="btn-gdrive-open-file" class="btn btn-secondary" style="justify-content: center;" data-i18n="gdrive.open">Open File from Drive</button>
+      </div>
+
+      <!-- File list container -->
+      <div id="gdrive-file-list" class="map-list" style="margin-top: 12px; display: none;"></div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+        <button class="btn btn-secondary modal-close-btn" data-i18n="general.close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SHORTCUTS MODAL ==================== -->
+  <div id="shortcuts-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 480px;">
+      <div class="modal-header">
+        <h2 data-i18n="shortcuts.title">Keyboard Shortcuts</h2>
+        <button class="toolbar-btn modal-close-btn">
+          <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <table class="shortcuts-table">
+        <tr><td class="section-header" colspan="2" data-i18n="shortcuts.editing">Editing</td></tr>
+        <tr><td><kbd>Tab</kbd></td><td>Add child node</td></tr>
+        <tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>Insert newline in text</td></tr>
+        <tr><td><kbd>Space</kbd> / <kbd>F2</kbd></td><td>Edit node text</td></tr>
+        <tr><td><kbd>Delete</kbd></td><td>Delete selected node</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Redo</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd></td><td>Copy / Paste branch & Images</td></tr>
+        <tr><td class="section-header" colspan="2" data-i18n="shortcuts.navigation">Navigation & Touch</td></tr>
+        <tr><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Navigate nodes</td></tr>
+        <tr><td><kbd>Pinch</kbd> (2-Finger)</td><td>Pinch to Zoom (Touch)</td></tr>
+        <tr><td><kbd>Long Press</kbd></td><td>Context menu (Touch)</td></tr>
+        <tr><td><kbd>Double Tap</kbd></td><td>Edit text (Touch)</td></tr>
+        <tr><td><kbd>/</kbd></td><td>Toggle collapse</td></tr>
+        <tr><td><kbd>Escape</kbd></td><td>Cancel / Deselect</td></tr>
+        <tr><td class="section-header" colspan="2" data-i18n="shortcuts.general">General</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Save map</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Export map</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>0</kbd></td><td>Fit to view</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>-</kbd></td><td>Zoom in / out</td></tr>
+        <tr><td><kbd>Space</kbd>+Drag</td><td>Pan canvas</td></tr>
+        <tr><td><kbd>?</kbd></td><td>Show shortcuts</td></tr>
+      </table>
+      <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+        <button class="btn btn-primary modal-close-btn" data-i18n="general.close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== STATUS BAR ==================== -->
+  <div id="status-bar">
+    <div class="status-group">
+      <div class="status-item">
+        <span class="save-indicator" id="save-indicator"></span>
+        <span id="save-status" data-i18n="status.autoSaved">Auto-saved</span>
+      </div>
+    </div>
+    <div class="status-group">
+      <div class="status-item">
+        <span id="node-count">0</span>&nbsp;<span data-i18n="status.nodes">nodes</span>
+      </div>
+      <div class="status-item">
+        <span data-i18n="status.zoom">Zoom</span>:&nbsp;<span id="status-zoom">100%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== FLOATING NODE FORMATTING BAR (MS WORD STYLE) ==================== -->
+  <div id="node-formatting-bar" class="formatting-bar hidden">
+    <!-- Font Family -->
+    <select id="fmt-font-family" class="fmt-select" title="Font Family">
+      <option value="Inter" selected>Inter</option>
+      <option value="Roboto">Roboto</option>
+      <option value="Arial">Arial</option>
+      <option value="Times New Roman">Times New Roman</option>
+      <option value="Courier New">Courier New</option>
+      <option value="Georgia">Georgia</option>
+      <option value="Comic Sans MS">Comic Sans</option>
+    </select>
+    <!-- Font size -->
+    <select id="fmt-font-size" class="fmt-select" title="Font Size">
+      <option value="10">10px</option>
+      <option value="12">12px</option>
+      <option value="14" selected>14px</option>
+      <option value="16">16px</option>
+      <option value="18">18px</option>
+      <option value="20">20px</option>
+      <option value="24">24px</option>
+      <option value="28">28px</option>
+      <option value="36">36px</option>
+    </select>
+    <button id="fmt-font-grow" class="fmt-btn" title="Increase Font Size (A+)">A<sup>+</sup></button>
+    <button id="fmt-font-shrink" class="fmt-btn" title="Decrease Font Size (A-)">A<sub>-</sub></button>
+    <div class="fmt-divider"></div>
+    <!-- Bold, Italic, Underline, Strikethrough, Subscript, Superscript -->
+    <button id="fmt-bold" class="fmt-btn" title="Bold (Ctrl+B)"><b>B</b></button>
+    <button id="fmt-italic" class="fmt-btn" title="Italic (Ctrl+I)"><i>I</i></button>
+    <button id="fmt-underline" class="fmt-btn" title="Underline (Ctrl+U)"><u>U</u></button>
+    <button id="fmt-strike" class="fmt-btn" title="Strikethrough"><s>S</s></button>
+    <button id="fmt-subscript" class="fmt-btn" title="Subscript">X<sub>2</sub></button>
+    <button id="fmt-superscript" class="fmt-btn" title="Superscript">X<sup>2</sup></button>
+    <div class="fmt-divider"></div>
+    <!-- Alignment -->
+    <button id="fmt-align-left" class="fmt-btn" title="Align Left">⬅️</button>
+    <button id="fmt-align-center" class="fmt-btn" title="Align Center">↔️</button>
+    <button id="fmt-align-right" class="fmt-btn" title="Align Right">➡️</button>
+    <div class="fmt-divider"></div>
+    <!-- Bút nhớ (Highlighter) -->
+    <div class="fmt-dropdown-container">
+      <button id="fmt-highlight-btn" class="fmt-btn" title="Highlight (Bút nhớ)">
+        <span class="fmt-icon-highlight">🖌️</span>
+      </button>
+      <div id="fmt-highlight-palette" class="fmt-palette hidden">
+        <div class="palette-swatch" data-highlight="none" style="background:#334155; text-align:center; line-height:22px; font-size:10px; color:#fff;" title="Clear">🚫</div>
+        <div class="palette-swatch" data-highlight="#FEF08A" style="background:#FEF08A;" title="Yellow"></div>
+        <div class="palette-swatch" data-highlight="#BBF7D0" style="background:#BBF7D0;" title="Green"></div>
+        <div class="palette-swatch" data-highlight="#FBCFE8" style="background:#FBCFE8;" title="Pink"></div>
+        <div class="palette-swatch" data-highlight="#BAE6FD" style="background:#BAE6FD;" title="Blue"></div>
+        <div class="palette-swatch" data-highlight="#FED7AA" style="background:#FED7AA;" title="Orange"></div>
+      </div>
+    </div>
+    <!-- Text color -->
+    <div class="fmt-dropdown-container">
+      <button id="fmt-color-btn" class="fmt-btn" title="Text Color">
+        <span class="fmt-icon-color" style="font-weight:bold;">A</span>
+      </button>
+      <div id="fmt-color-palette" class="fmt-palette hidden">
+        <div class="palette-swatch" data-color="inherit" style="background:#E2E8F0;" title="Default"></div>
+        <div class="palette-swatch" data-color="#EF4444" style="background:#EF4444;" title="Red"></div>
+        <div class="palette-swatch" data-color="#F59E0B" style="background:#F59E0B;" title="Orange"></div>
+        <div class="palette-swatch" data-color="#10B981" style="background:#10B981;" title="Green"></div>
+        <div class="palette-swatch" data-color="#06B6D4" style="background:#06B6D4;" title="Cyan"></div>
+        <div class="palette-swatch" data-color="#3B82F6" style="background:#3B82F6;" title="Blue"></div>
+        <div class="palette-swatch" data-color="#8B5CF6" style="background:#8B5CF6;" title="Purple"></div>
+        <div class="palette-swatch" data-color="#EC4899" style="background:#EC4899;" title="Pink"></div>
+      </div>
+    </div>
+    <div class="fmt-divider"></div>
+    <button id="fmt-clear" class="fmt-btn" title="Clear Formatting (Xóa Định Dạng)">🧹</button>
+  </div>
+
+  <!-- ==================== FLOATING LINE CONTEXT BOX ==================== -->
+  <div id="line-context-box" class="line-context-box hidden">
+    <div class="context-box-header">
+      <span>Connector Line Settings</span>
+      <button id="line-box-close" class="line-box-close">&times;</button>
+    </div>
+    <div class="context-box-body">
+      <!-- Line Width / Thickness -->
+      <div class="context-row">
+        <label>Độ to (Thickness):</label>
+        <div class="btn-group-toggle">
+          <button class="line-val-btn" data-width="1">1px</button>
+          <button class="line-val-btn active" data-width="2">2px</button>
+          <button class="line-val-btn" data-width="3">3px</button>
+          <button class="line-val-btn" data-width="5">5px</button>
+          <button class="line-val-btn" data-width="8">8px</button>
+        </div>
+      </div>
+      <!-- Line Opacity -->
+      <div class="context-row">
+        <label>Độ đậm (Opacity):</label>
+        <div class="btn-group-toggle">
+          <button class="line-val-btn" data-opacity="0.3">30%</button>
+          <button class="line-val-btn" data-opacity="0.6">60%</button>
+          <button class="line-val-btn active" data-opacity="1.0">100%</button>
+        </div>
+      </div>
+      <!-- Line Dash Style -->
+      <div class="context-row">
+        <label>Kiểu nét (Style):</label>
+        <div class="btn-group-toggle">
+          <button class="line-val-btn active" data-dash="solid">Nét liền</button>
+          <button class="line-val-btn" data-dash="dashed">Nét đứt</button>
+          <button class="line-val-btn" data-dash="dotted">Nét chấm</button>
+        </div>
+      </div>
+      <!-- Line Color -->
+      <div class="context-row">
+        <label>Màu sắc (Color):</label>
+        <div class="line-color-swatches">
+          <div class="line-swatch" data-line-color="inherit" style="background:var(--color-primary);" title="Node Color"></div>
+          <div class="line-swatch" data-line-color="#A855F7" style="background:#A855F7;" title="Purple"></div>
+          <div class="line-swatch" data-line-color="#06B6D4" style="background:#06B6D4;" title="Cyan"></div>
+          <div class="line-swatch" data-line-color="#10B981" style="background:#10B981;" title="Green"></div>
+          <div class="line-swatch" data-line-color="#F59E0B" style="background:#F59E0B;" title="Yellow"></div>
+          <div class="line-swatch" data-line-color="#EF4444" style="background:#EF4444;" title="Red"></div>
+          <div class="line-swatch" data-line-color="#94A3B8" style="background:#94A3B8;" title="Slate"></div>
+          <div class="line-swatch" data-line-color="#FFFFFF" style="background:#FFFFFF; border:1px solid #64748B;" title="White"></div>
+        </div>
+      </div>
+      <!-- Line Text / Label -->
+      <div class="context-row">
+        <label>Nhãn chữ cho Line (Line Text):</label>
+        <input type="text" id="line-text-input" class="input" placeholder="Nhập chữ/nhãn cho đường nối..." spellcheck="false" style="margin-top: 4px;">
+      </div>
+      <!-- Arrow Direction -->
+      <div class="context-row">
+        <label>Mũi tên (Arrow):</label>
+        <div class="btn-group-toggle">
+          <button class="line-arrow-val-btn active" data-arrow="none">Không</button>
+          <button class="line-arrow-val-btn" data-arrow="end">Xuôi (➔)</button>
+          <button class="line-arrow-val-btn" data-arrow="start">Ngược (⬅)</button>
+          <button class="line-arrow-val-btn" data-arrow="both">2 Đầu (↔)</button>
+        </div>
+      </div>
+      <!-- Actions: Delete / Detach Line -->
+      <div class="context-row" style="margin-top: 16px; border-top: 1px solid var(--color-border); padding-top: 12px;">
+        <button id="btn-delete-line" class="btn btn-danger" style="width: 100%; background: #EF4444; color: #fff; border: none; padding: 7px 12px; border-radius: var(--radius-md); font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          ✂️ Xóa Line (Tách Node)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MATH EDITOR MODAL ==================== -->
+  <div id="math-modal" class="modal-overlay">
+    <div class="modal-content math-modal-content" style="max-width: 650px; width: 92%;">
+      <div class="modal-header">
+        <h2 style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: #EC4899; font-weight: 800;">∑</span>
+          <span>Đánh & Định dạng Công thức Toán (Math Editor)</span>
+        </h2>
+        <button class="toolbar-btn modal-close-btn" id="btn-close-math-modal">
+          <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="math-editor-body" style="display: flex; flex-direction: column; gap: 14px; margin-top: 12px;">
+        <!-- Symbol Palette Category Tabs -->
+        <div class="math-tabs" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; border-bottom: 1px solid var(--color-border);">
+          <button class="math-tab-btn active" data-tab="basic">Cơ bản & Phân số</button>
+          <button class="math-tab-btn" data-tab="operators">Toán tử & Phép so sánh</button>
+          <button class="math-tab-btn" data-tab="greek">Hy Lạp</button>
+          <button class="math-tab-btn" data-tab="calculus">Giải tích & Hàm</button>
+          <button class="math-tab-btn" data-tab="advanced">Ma trận & Cấu trúc</button>
+        </div>
+
+        <!-- Symbol Grid Container -->
+        <div class="math-symbols-container" style="background: rgba(15, 23, 42, 0.6); padding: 10px; border-radius: var(--radius-md); border: 1px solid var(--color-border); min-height: 110px;">
+          <!-- Basic & Fractions -->
+          <div class="math-symbol-grid active" id="math-grid-basic">
+            <button class="math-sym-btn" data-latex="\frac{a}{b}" title="Phân số">$\frac{a}{b}$</button>
+            <button class="math-sym-btn" data-latex="\sqrt{x}" title="Căn bậc 2">$\sqrt{x}$</button>
+            <button class="math-sym-btn" data-latex="\sqrt[n]{x}" title="Căn bậc n">$\sqrt[n]{x}$</button>
+            <button class="math-sym-btn" data-latex="x^2" title="Mũ 2">$x^2$</button>
+            <button class="math-sym-btn" data-latex="x^n" title="Mũ n">$x^n$</button>
+            <button class="math-sym-btn" data-latex="x_n" title="Chỉ số dưới">$x_n$</button>
+            <button class="math-sym-btn" data-latex="|x|" title="Giá trị tuyệt đối">$|x|$</button>
+            <button class="math-sym-btn" data-latex="(x)" title="Ngoặc đơn">$(x)$</button>
+            <button class="math-sym-btn" data-latex="\{x\}" title="Ngoặc nhọn">$\{x\}$</button>
+            <button class="math-sym-btn" data-latex="[x]" title="Ngoặc vuông">$[x]$</button>
+          </div>
+
+          <!-- Operators & Comparisons -->
+          <div class="math-symbol-grid" id="math-grid-operators" style="display: none;">
+            <button class="math-sym-btn" data-latex="\pm" title="Cộng trừ">$\pm$</button>
+            <button class="math-sym-btn" data-latex="\times" title="Nhân">$\times$</button>
+            <button class="math-sym-btn" data-latex="\div" title="Chia">$\div$</button>
+            <button class="math-sym-btn" data-latex="\cdot" title="Chấm nhân">$\cdot$</button>
+            <button class="math-sym-btn" data-latex="\neq" title="Khác">$\neq$</button>
+            <button class="math-sym-btn" data-latex="\le" title="Nhỏ hơn hoặc bằng">$\le$</button>
+            <button class="math-sym-btn" data-latex="\ge" title="Lớn hơn hoặc bằng">$\ge$</button>
+            <button class="math-sym-btn" data-latex="\approx" title="Xấp xỉ">$\approx$</button>
+            <button class="math-sym-btn" data-latex="\infty" title="Vô cực">$\infty$</button>
+            <button class="math-sym-btn" data-latex="\in" title="Thuộc">$\in$</button>
+            <button class="math-sym-btn" data-latex="\forall" title="Với mọi">$\forall$</button>
+            <button class="math-sym-btn" data-latex="\exists" title="Tồn tại">$\exists$</button>
+          </div>
+
+          <!-- Greek Letters -->
+          <div class="math-symbol-grid" id="math-grid-greek" style="display: none;">
+            <button class="math-sym-btn" data-latex="\alpha">$\alpha$</button>
+            <button class="math-sym-btn" data-latex="\beta">$\beta$</button>
+            <button class="math-sym-btn" data-latex="\gamma">$\gamma$</button>
+            <button class="math-sym-btn" data-latex="\delta">$\delta$</button>
+            <button class="math-sym-btn" data-latex="\theta">$\theta$</button>
+            <button class="math-sym-btn" data-latex="\pi">$\pi$</button>
+            <button class="math-sym-btn" data-latex="\sigma">$\sigma$</button>
+            <button class="math-sym-btn" data-latex="\lambda">$\lambda$</button>
+            <button class="math-sym-btn" data-latex="\omega">$\omega$</button>
+            <button class="math-sym-btn" data-latex="\Delta">$\Delta$</button>
+            <button class="math-sym-btn" data-latex="\Sigma">$\Sigma$</button>
+            <button class="math-sym-btn" data-latex="\Omega">$\Omega$</button>
+          </div>
+
+          <!-- Calculus & Functions -->
+          <div class="math-symbol-grid" id="math-grid-calculus" style="display: none;">
+            <button class="math-sym-btn" data-latex="\sum_{i=1}^{n}" title="Tổng">$\sum$</button>
+            <button class="math-sym-btn" data-latex="\int_{a}^{b}" title="Tích phân">$\int$</button>
+            <button class="math-sym-btn" data-latex="\lim_{x \to 0}" title="Giới hạn">$\lim$</button>
+            <button class="math-sym-btn" data-latex="\frac{d}{dx}" title="Đạo hàm">$\frac{d}{dx}$</button>
+            <button class="math-sym-btn" data-latex="\sin(x)" title="Sin">$\sin$</button>
+            <button class="math-sym-btn" data-latex="\cos(x)" title="Cos">$\cos$</button>
+            <button class="math-sym-btn" data-latex="\tan(x)" title="Tan">$\tan$</button>
+            <button class="math-sym-btn" data-latex="\log(x)" title="Log">$\log$</button>
+            <button class="math-sym-btn" data-latex="\ln(x)" title="Ln">$\ln$</button>
+          </div>
+
+          <!-- Advanced & Matrices -->
+          <div class="math-symbol-grid" id="math-grid-advanced" style="display: none;">
+            <button class="math-sym-btn" data-latex="\begin{matrix} a & b \\ c & d \end{matrix}" title="Ma trận 2x2">Ma trận 2x2</button>
+            <button class="math-sym-btn" data-latex="\begin{cases} x + y = 1 \\ x - y = 0 \end{cases}" title="Hệ phương trình">Hệ phương trình</button>
+            <button class="math-sym-btn" data-latex="\vec{v}" title="Vector">$\vec{v}$</button>
+            <button class="math-sym-btn" data-latex="\overline{AB}" title="Đoạn thẳng">$\overline{AB}$</button>
+          </div>
+        </div>
+
+        <!-- Input Area & Live Preview -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <label style="font-size: var(--text-xs); font-weight: 600; color: var(--color-text-secondary);">Mã LaTeX Công thức (Nhập hoặc bấm ký hiệu ở trên):</label>
+          <textarea id="math-input-latex" class="ai-prompt-area" rows="3" placeholder="Nhập công thức (VD: \frac{-b \pm \sqrt{b^2-4ac}}{2a})..." style="font-family: monospace; font-size: 14px;"></textarea>
+        </div>
+
+        <!-- Live Preview -->
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label style="font-size: var(--text-xs); font-weight: 600; color: var(--color-text-secondary);">Xem trước trực tiếp (Live Preview):</label>
+          <div id="math-live-preview" style="min-height: 50px; padding: 12px; background: rgba(30, 41, 59, 0.8); border: 1px dashed var(--color-border); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 18px; color: #F8FAFC;">
+            <span style="color: var(--color-text-muted); font-size: 13px;">(Công thức sẽ hiển thị tại đây)</span>
+          </div>
+        </div>
+
+        <!-- Action buttons -->
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+          <button id="btn-cancel-math" class="btn btn-secondary" style="padding: 8px 14px;">Hủy</button>
+          <button id="btn-append-math" class="btn btn-secondary" style="padding: 8px 14px; background: rgba(59, 130, 246, 0.2); color: #60A5FA; border: 1px solid #3B82F6;" title="Ghép thêm công thức vào văn bản hiện tại của node">
+            ➕ Thêm nối tiếp
+          </button>
+          <button id="btn-insert-math" class="btn btn-primary" style="padding: 8px 18px; background: linear-gradient(135deg, #EC4899, #8B5CF6); font-weight: 600;">
+            ✨ Lưu vào Node
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== TOAST CONTAINER ==================== -->
+  <div id="toast-container"></div>
+
+  <!-- KaTeX JavaScript Engine -->
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+
+  <!-- ==================== APP SCRIPT ==================== -->
+  <script type="module" src="js/app.js?v=84.0"></script>
+</body>
+</html>
+
