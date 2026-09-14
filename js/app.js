@@ -529,7 +529,7 @@ class App {
 
   handleTextChange(nodeId, newText) {
     if (newText.trim() === '') newText = 'Topic';
-    this.mindmap.updateNode(nodeId, { text: newText.trim() });
+    this.mindmap.updateNode(nodeId, { text: newText });
     this.isEditing = false;
     this.keyboard.setEditing(false);
   }
@@ -2984,8 +2984,8 @@ class App {
     const contentEl = $('#right-editor-content');
     if (!contentEl) return;
 
-    let newText = contentEl.innerHTML.trim();
-    if (newText === '' || newText === '<br>') {
+    let newText = contentEl.innerHTML;
+    if (newText.trim() === '' || newText.trim() === '<br>') {
       newText = 'Topic';
     }
 
