@@ -1,4 +1,4 @@
-import { $, createElement, compressImageFile } from './utils.js';
+import { $, createElement, compressImageFile, createBezierEasing } from './utils.js';
 import { handleSmartTab, handleSmartEnter, handleSmartSpace, handleSmartBackspace, handleSmartInput } from './smart_editor.js';
 
 export class Renderer {
@@ -25,6 +25,11 @@ export class Renderer {
     this.selectedConnectionId = null;
     this.currentConnections = [];
 
+    // Easing & Animation Sync State
+    this.easeCubic = createBezierEasing(0.16, 1, 0.3, 1);
+    this.lastRenderedPositions = new Map();
+    this.connectorAnimFrame = null;
+
     // Drag State
     this.dragState = {
       isDragging: false,
@@ -33,12 +38,18 @@ export class Renderer {
       startY: 0,
       initialLeft: 0,
       initialTop: 0,
+      currentClientX: null,
+      currentClientY: null,
+      currentDropTargetEl: null,
+      rafPending: null,
       timeout: null
     };
 
     // Bind event handlers
     this.handleMouseMove = this.handleMouseMove.bind(this);
     this.handleMouseUp = this.handleMouseUp.bind(this);
+    this.handleTouchMove = this.handleTouchMove.bind(this);
+    this.handleTouchEnd = this.handleTouchEnd.bind(this);
     
     this.initDragDrop();
   }
@@ -79,8 +90,66 @@ export class Renderer {
       }
     });
 
-    // 3. Render SVG Connectors for all nodes
-    this.renderConnectors(rootNode, layoutData, this.currentConnections);
+    // 3. Render SVG Connectors with synchronized animation
+    if (this.connectorAnimFrame) {
+      cancelAnimationFrame(this.connectorAnimFrame);
+      this.connectorAnimFrame = null;
+    }
+
+    // Check if any existing node changed positions
+    let hasMoved = false;
+    if (this.lastRenderedPositions && this.lastRenderedPositions.size > 0 && !this.dragState.isDragging) {
+      for (const l of layoutData) {
+        const prev = this.lastRenderedPositions.get(l.id);
+        if (prev && (Math.abs(prev.x - l.x) > 1 || Math.abs(prev.y - l.y) > 1)) {
+          hasMoved = true;
+          break;
+        }
+      }
+    }
+
+    if (!hasMoved) {
+      this.renderConnectors(rootNode, layoutData, this.currentConnections);
+      this.lastRenderedPositions = new Map(layoutData.map(l => [l.id, { x: l.x, y: l.y, width: l.width, height: l.height }]));
+    } else {
+      const startTime = performance.now();
+      const duration = 300; // Matches CSS transition duration (300ms)
+      const oldPositions = new Map(this.lastRenderedPositions);
+
+      const step = (now) => {
+        const elapsed = now - startTime;
+        const progress = Math.min(1, elapsed / duration);
+        const ease = this.easeCubic ? this.easeCubic(progress) : progress;
+
+        const interpolatedLayout = layoutData.map(l => {
+          const old = oldPositions.get(l.id);
+          if (!old) return l; // New nodes are already at target position
+          const curX = old.x + (l.x - old.x) * ease;
+          const curY = old.y + (l.y - old.y) * ease;
+          const curW = old.width + ((l.width || old.width) - old.width) * ease;
+          const curH = old.height + ((l.height || old.height) - old.height) * ease;
+          return {
+            ...l,
+            x: curX,
+            y: curY,
+            width: curW,
+            height: curH
+          };
+        });
+
+        this.renderConnectors(rootNode, interpolatedLayout, this.currentConnections);
+
+        if (progress < 1) {
+          this.connectorAnimFrame = requestAnimationFrame(step);
+        } else {
+          this.connectorAnimFrame = null;
+          this.renderConnectors(rootNode, layoutData, this.currentConnections);
+          this.lastRenderedPositions = new Map(layoutData.map(l => [l.id, { x: l.x, y: l.y, width: l.width, height: l.height }]));
+        }
+      };
+
+      this.connectorAnimFrame = requestAnimationFrame(step);
+    }
   }
 
   /**
@@ -1031,6 +1100,46 @@ export class Renderer {
   initDragDrop() {
     document.addEventListener('mousemove', this.handleMouseMove);
     document.addEventListener('mouseup', this.handleMouseUp);
+    document.addEventListener('touchmove', this.handleTouchMove, { passive: false });
+    document.addEventListener('touchend', this.handleTouchEnd);
+    document.addEventListener('touchcancel', this.handleTouchEnd);
+  }
+
+  handleTouchMove(e) {
+    if (this.dragState.isDragging && e.cancelable) {
+      e.preventDefault();
+    }
+    this.handleMouseMove(e);
+  }
+
+  handleTouchEnd(e) {
+    this.handleMouseUp(e);
+  }
+
+  findNodeInTree(root, nodeId) {
+    if (!root) return null;
+    if (Array.isArray(root)) {
+      for (const r of root) {
+        const found = this.findNodeInTree(r, nodeId);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (root.id === nodeId) return root;
+    if (root.children) {
+      for (const child of root.children) {
+        const found = this.findNodeInTree(child, nodeId);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  isDescendantOf(ancestorId, targetId) {
+    if (!ancestorId || !targetId || ancestorId === targetId) return false;
+    const ancestor = this.findNodeInTree(this.currentRootNode, ancestorId);
+    if (!ancestor || !ancestor.children) return false;
+    return !!this.findNodeInTree(ancestor.children, targetId);
   }
 
   startDrag(nodeId, e) {
@@ -1038,16 +1147,27 @@ export class Renderer {
     if (!element) return;
     
     this.dragState.isDragging = true;
+    if (this.connectorAnimFrame) {
+      cancelAnimationFrame(this.connectorAnimFrame);
+      this.connectorAnimFrame = null;
+    }
 
-    const addDraggingClass = (nId) => {
+    const addDraggingClass = (nId, isRoot = false) => {
       const el = this.nodeElements.get(nId);
-      if (el) el.classList.add('dragging');
+      if (el) {
+        el.classList.add('dragging');
+        if (isRoot) {
+          el.classList.add('drag-root');
+        } else {
+          el.classList.add('drag-subtree');
+        }
+      }
       const n = this.findNodeInTree(this.currentRootNode, nId);
       if (n && !n.collapsed && n.children) {
-        n.children.forEach(c => addDraggingClass(c.id));
+        n.children.forEach(c => addDraggingClass(c.id, false));
       }
     };
-    addDraggingClass(nodeId);
+    addDraggingClass(nodeId, true);
     
     if (this.onNodeDragStart) {
       this.onNodeDragStart(nodeId);
@@ -1059,10 +1179,18 @@ export class Renderer {
       clearTimeout(this.dragState.timeout);
       this.dragState.timeout = null;
     }
+    if (this.dragState.rafPending) {
+      cancelAnimationFrame(this.dragState.rafPending);
+      this.dragState.rafPending = null;
+    }
+    if (this.dragState.currentDropTargetEl) {
+      this.dragState.currentDropTargetEl.classList.remove('drop-target');
+      this.dragState.currentDropTargetEl = null;
+    }
     if (this.dragState.dragNodeId) {
       const removeDraggingClass = (nId) => {
         const el = this.nodeElements.get(nId);
-        if (el) el.classList.remove('dragging');
+        if (el) el.classList.remove('dragging', 'drag-root', 'drag-subtree');
         const n = this.findNodeInTree(this.currentRootNode, nId);
         if (n && !n.collapsed && n.children) {
           n.children.forEach(c => removeDraggingClass(c.id));
@@ -1078,57 +1206,94 @@ export class Renderer {
   handleMouseMove(e) {
     if (!this.dragState.dragNodeId) return;
 
-    // Verify left mouse button is pressed (bitmask 1). If not pressed (e.g. mouseup missed or right-click), cancel drag immediately.
-    if (e.buttons !== undefined && (e.buttons & 1) === 0) {
+    // Verify left mouse button is pressed (bitmask 1) for mouse events
+    if (e.type === 'mousemove' && e.buttons !== undefined && (e.buttons & 1) === 0) {
       this.cancelDragState();
       return;
     }
 
-    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-    if (!clientX || !clientY) return;
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : null);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : null);
+    if (clientX === null || clientY === null) return;
 
-    const scale = this.getCanvasScale ? this.getCanvasScale() : 1.0;
+    this.dragState.currentClientX = clientX;
+    this.dragState.currentClientY = clientY;
 
     if (!this.dragState.isDragging) {
+      const scale = this.getCanvasScale ? this.getCanvasScale() : 1.0;
       const dx = (clientX - this.dragState.startX) / scale;
       const dy = (clientY - this.dragState.startY) / scale;
-      if (Math.sqrt(dx * dx + dy * dy) > 3) {
-        clearTimeout(this.dragState.timeout);
+      if (Math.sqrt(dx * dx + dy * dy) > 4) {
+        if (this.dragState.timeout) {
+          clearTimeout(this.dragState.timeout);
+          this.dragState.timeout = null;
+        }
         this.startDrag(this.dragState.dragNodeId, e);
       }
       return;
     }
 
-    // Live update position of dragged DOM element & connected SVG lines
+    // Schedule high-performance rAF drag frame to lock to display refresh rate
+    if (!this.dragState.rafPending) {
+      this.dragState.rafPending = requestAnimationFrame(() => {
+        this.dragState.rafPending = null;
+        this.updateDragStep();
+      });
+    }
+  }
+
+  updateDragStep() {
+    if (!this.dragState.isDragging || !this.dragState.dragNodeId) return;
+
+    const scale = this.getCanvasScale ? this.getCanvasScale() : 1.0;
+    const clientX = this.dragState.currentClientX;
+    const clientY = this.dragState.currentClientY;
+    if (clientX === null || clientY === null) return;
+
+    const dx = (clientX - this.dragState.startX) / scale;
+    const dy = (clientY - this.dragState.startY) / scale;
+    const newX = this.dragState.initialLeft + dx;
+    const newY = this.dragState.initialTop + dy;
+
+    // 1. Live update position of dragged DOM element & connected SVG lines + subtree
     const draggedEl = this.nodeElements.get(this.dragState.dragNodeId);
     if (draggedEl) {
-      const dx = (clientX - this.dragState.startX) / scale;
-      const dy = (clientY - this.dragState.startY) / scale;
-      const newX = this.dragState.initialLeft + dx;
-      const newY = this.dragState.initialTop + dy;
       draggedEl.style.left = `${newX}px`;
       draggedEl.style.top = `${newY}px`;
-
       this.updateLiveConnectors(this.dragState.dragNodeId, newX, newY);
     }
 
-    // Highlight potential drop target
-    let targetElement = e.target.closest ? e.target.closest('.mindmap-node') : null;
+    // 2. Efficient drop target detection (ignoring dragged node & its subtree)
+    let targetElement = document.elementFromPoint ? document.elementFromPoint(clientX, clientY)?.closest('.mindmap-node') : null;
     let targetId = targetElement ? targetElement.dataset.nodeId : null;
 
-    this.nodeElements.forEach(el => el.classList.remove('drop-target'));
+    // Do not allow dropping onto self or onto any of its own descendants
+    if (targetId && (targetId === this.dragState.dragNodeId || this.isDescendantOf(this.dragState.dragNodeId, targetId))) {
+      targetElement = null;
+      targetId = null;
+    }
 
-    if (targetId && targetId !== this.dragState.dragNodeId) {
-      targetElement.classList.add('drop-target');
+    if (targetElement !== this.dragState.currentDropTargetEl) {
+      if (this.dragState.currentDropTargetEl) {
+        this.dragState.currentDropTargetEl.classList.remove('drop-target');
+      }
+      if (targetElement) {
+        targetElement.classList.add('drop-target');
+      }
+      this.dragState.currentDropTargetEl = targetElement;
+    }
+
+    if (this.onNodeDragMove) {
+      this.onNodeDragMove(this.dragState.dragNodeId, newX, newY);
     }
   }
 
   updateLiveConnectors(nodeId, newX, newY) {
-    if (!this.lastLayoutData) return;
+    const layoutData = this.currentLayoutData;
+    if (!layoutData) return;
 
     const layoutMap = new Map();
-    this.lastLayoutData.forEach(info => layoutMap.set(info.id, { ...info }));
+    layoutData.forEach(info => layoutMap.set(info.id, { ...info }));
 
     const currentInfo = layoutMap.get(nodeId);
     if (!currentInfo) return;
@@ -1156,20 +1321,8 @@ export class Renderer {
     updateSubtreePositions(nodeId);
 
     if (this.currentRootNode) {
-      this.renderConnectors(this.currentRootNode, Array.from(layoutMap.values()));
+      this.renderConnectors(this.currentRootNode, Array.from(layoutMap.values()), this.currentConnections);
     }
-  }
-
-  findNodeInTree(root, nodeId) {
-    if (!root) return null;
-    if (root.id === nodeId) return root;
-    if (root.children) {
-      for (const child of root.children) {
-        const found = this.findNodeInTree(child, nodeId);
-        if (found) return found;
-      }
-    }
-    return null;
   }
 
   handleMouseUp(e) {
@@ -1178,9 +1331,14 @@ export class Renderer {
       this.dragState.timeout = null;
     }
 
+    if (this.dragState.rafPending) {
+      cancelAnimationFrame(this.dragState.rafPending);
+      this.dragState.rafPending = null;
+    }
+
     if (this.dragState.isDragging) {
-      const clientX = e.clientX || (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : this.dragState.startX);
-      const clientY = e.clientY || (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : this.dragState.startY);
+      const clientX = e.clientX !== undefined ? e.clientX : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : this.dragState.currentClientX || this.dragState.startX);
+      const clientY = e.clientY !== undefined ? e.clientY : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : this.dragState.currentClientY || this.dragState.startY);
 
       const scale = this.getCanvasScale ? this.getCanvasScale() : 1.0;
       const dx = (clientX - this.dragState.startX) / scale;
@@ -1190,10 +1348,15 @@ export class Renderer {
 
       let targetElement = document.elementFromPoint ? document.elementFromPoint(clientX, clientY)?.closest('.mindmap-node') : null;
       let targetId = targetElement ? targetElement.dataset.nodeId : null;
+
+      if (targetId && (targetId === this.dragState.dragNodeId || this.isDescendantOf(this.dragState.dragNodeId, targetId))) {
+        targetElement = null;
+        targetId = null;
+      }
       
       const removeDraggingClass = (nId) => {
         const el = this.nodeElements.get(nId);
-        if (el) el.classList.remove('dragging');
+        if (el) el.classList.remove('dragging', 'drag-root', 'drag-subtree');
         const n = this.findNodeInTree(this.currentRootNode, nId);
         if (n && !n.collapsed && n.children) {
           n.children.forEach(c => removeDraggingClass(c.id));
@@ -1201,7 +1364,34 @@ export class Renderer {
       };
       removeDraggingClass(this.dragState.dragNodeId);
       
+      if (this.dragState.currentDropTargetEl) {
+        this.dragState.currentDropTargetEl.classList.remove('drop-target');
+        this.dragState.currentDropTargetEl = null;
+      }
       this.nodeElements.forEach(el => el.classList.remove('drop-target'));
+
+      // If dropped onto a target, record current visual drop coordinates in lastRenderedPositions
+      // so layout transition animates connectors starting from the exact drop position!
+      if (targetId && targetId !== this.dragState.dragNodeId) {
+        const updateLastPos = (nId, curX, curY) => {
+          const el = this.nodeElements.get(nId);
+          const w = el ? (parseFloat(el.style.width) || el.offsetWidth || 100) : 100;
+          const h = el ? (parseFloat(el.style.height) || el.offsetHeight || 40) : 40;
+          this.lastRenderedPositions.set(nId, { x: curX, y: curY, width: w, height: h });
+          const n = this.findNodeInTree(this.currentRootNode, nId);
+          if (n && !n.collapsed && n.children) {
+            n.children.forEach(c => {
+              const childEl = this.nodeElements.get(c.id);
+              if (childEl) {
+                const cx = parseFloat(childEl.style.left) || 0;
+                const cy = parseFloat(childEl.style.top) || 0;
+                updateLastPos(c.id, cx, cy);
+              }
+            });
+          }
+        };
+        updateLastPos(this.dragState.dragNodeId, finalX, finalY);
+      }
 
       if (this.onNodeDragEnd) {
         this.onNodeDragEnd(

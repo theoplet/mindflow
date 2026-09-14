@@ -276,3 +276,52 @@ export function compressImageFile(file, maxDim = 1200, quality = 0.85) {
   });
 }
 
+/**
+ * Creates a cubic-bezier easing function matching CSS cubic-bezier(x1, y1, x2, y2)
+ * @param {number} x1
+ * @param {number} y1
+ * @param {number} x2
+ * @param {number} y2
+ * @returns {(t: number) => number}
+ */
+export function createBezierEasing(x1, y1, x2, y2) {
+  const cx = 3 * x1;
+  const bx = 3 * (x2 - x1) - cx;
+  const ax = 1 - cx - bx;
+
+  const cy = 3 * y1;
+  const by = 3 * (y2 - y1) - cy;
+  const ay = 1 - cy - by;
+
+  function sampleCurveX(t) { return ((ax * t + bx) * t + cx) * t; }
+  function sampleCurveY(t) { return ((ay * t + by) * t + cy) * t; }
+  function sampleCurveDerivativeX(t) { return (3 * ax * t + 2 * bx) * t + cx; }
+
+  function solveCurveX(x) {
+    let t = x;
+    for (let i = 0; i < 8; i++) {
+      const xEst = sampleCurveX(t) - x;
+      if (Math.abs(xEst) < 1e-5) return t;
+      const d = sampleCurveDerivativeX(t);
+      if (Math.abs(d) < 1e-5) break;
+      t = t - xEst / d;
+    }
+    let t0 = 0, t1 = 1;
+    t = x;
+    for (let j = 0; j < 10; j++) {
+      const xEst = sampleCurveX(t);
+      if (Math.abs(xEst - x) < 1e-5) return t;
+      if (x > xEst) t0 = t;
+      else t1 = t;
+      t = (t1 + t0) * 0.5;
+    }
+    return t;
+  }
+
+  return function(t) {
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    return sampleCurveY(solveCurveX(t));
+  };
+}
+
