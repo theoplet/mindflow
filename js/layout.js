@@ -118,14 +118,26 @@ export class Layout {
     const paddingX = isRoot ? 48 : 28;
     const paddingY = isRoot ? 24 : 16;
     
-    // Strip HTML markup tags if any, but preserve text inside <...> if not valid HTML tags
-    let rawText = node.text || '';
-    if (rawText.includes('katex-rendered')) {
-      rawText = rawText.replace(/<[^>]*>/g, '');
-    }
-    const textLen = Math.max(1, rawText.length);
+    let textStr = String(node.text || '');
+    let cleanForLength = textStr;
 
-    const textStr = node.text || '';
+    // 1. Clean KaTeX rendered DOM markup if present
+    if (cleanForLength.includes('katex-rendered')) {
+      cleanForLength = cleanForLength.replace(/<div class="katex-rendered[^"]*">[\s\S]*?<annotation encoding="application\/x-tex">([\s\S]*?)<\/annotation>[\s\S]*?<\/div>/gi, '$1')
+                                     .replace(/<span class="katex-display">[\s\S]*?<\/span>/gi, '')
+                                     .replace(/<span class="katex">[\s\S]*?<\/span>/gi, '')
+                                     .replace(/<div class="katex-rendered[^"]*">[\s\S]*?<\/div>/gi, '');
+    }
+
+    // 2. Count inline <img> tags in node.text
+    const inlineImgMatches = cleanForLength.match(/<img\b[^>]*>/gi) || [];
+    const inlineImgCount = inlineImgMatches.length;
+
+    // 3. Strip ALL HTML tags completely (especially <img src="data:image/..."> containing huge Base64 data URLs)
+    // so base64 characters NEVER blow up textLen into hundreds of thousands of characters!
+    const plainText = cleanForLength.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const textLen = Math.max(1, plainText.length);
+
     const hasMath = textStr.includes('\\') || textStr.includes('$');
     const isComplexMath = hasMath && (textStr.includes('\\begin') || textStr.includes('\\frac') || textStr.includes('\\int') || textStr.includes('\\sum') || textStr.includes('\\matrix') || textStr.includes('pmatrix') || textStr.includes('\\partial') || textStr.includes('\\lim'));
 
@@ -142,6 +154,9 @@ export class Layout {
       width = Math.max(380, width);
     }
     if (node.icon) width += 28;
+    if (inlineImgCount > 0) {
+      width = Math.max(width, Math.min(targetMaxWidth, 220));
+    }
 
     const availableTextWidth = Math.max(60, width - paddingX * 2);
     
@@ -160,16 +175,25 @@ export class Layout {
       height = Math.max(height, isRoot ? 64 : 48);
     }
 
+    // Add safe bounded height for inline images
+    if (inlineImgCount > 0) {
+      height += inlineImgCount * 130;
+    }
+
     const imagesList = node.images || (node.image ? [{ src: node.image, width: 160, height: 100 }] : []);
     if (imagesList.length > 0) {
       const imgRows = Math.ceil(imagesList.length / 3);
-      const rowH = 115;
+      const rowH = 120;
       height += imgRows * (rowH + 8);
-      width = Math.max(width, imagesList.length >= 3 ? 460 : imagesList.length * 150 + paddingX * 2);
+      width = Math.max(width, imagesList.length >= 3 ? 460 : imagesList.length * 160 + paddingX * 2);
     }
 
     if (node.customWidth) width = node.customWidth;
     if (node.customHeight) height = node.customHeight;
+
+    // Absolute safety bounds against infinite runaway dimensions
+    if (!node.customWidth) width = Math.min(width, 700);
+    if (!node.customHeight) height = Math.min(height, 1500);
 
     return { width: Math.ceil(width), height: Math.ceil(height) };
   }

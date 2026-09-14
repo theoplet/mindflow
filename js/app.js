@@ -4,7 +4,7 @@
  * History, Storage, Exporter, Importer, Theme, I18n, AI
  */
 
-import { $, showToast, generateId, debounce, deepClone } from './utils.js';
+import { $, showToast, generateId, debounce, deepClone, compressImageFile } from './utils.js';
 import { MindMap } from './mindmap.js';
 import { Layout } from './layout.js';
 import { Renderer } from './renderer.js';
@@ -360,20 +360,29 @@ class App {
         const prevW = el.style.width;
         const prevH = el.style.height;
         const prevMaxW = el.style.maxWidth;
+        const prevMinH = el.style.minHeight;
 
         el.style.width = 'auto';
         el.style.height = 'auto';
+        el.style.minHeight = '0px';
         el.style.maxWidth = `${targetMaxWidth}px`;
 
-        const realW = el.offsetWidth;
+        let realW = el.offsetWidth;
         let realH = el.offsetHeight;
 
-        if (el.scrollHeight > el.clientHeight) {
+        if (el.scrollHeight > el.clientHeight + 4) {
           realH = Math.max(realH, el.scrollHeight + 8);
         }
 
+        // Safety clamp on measured DOM size to prevent infinite runaway dimensions
+        const maxSafeW = isRoot ? 600 : 480;
+        const maxSafeH = 1200;
+        realW = Math.min(realW, maxSafeW);
+        realH = Math.min(realH, maxSafeH);
+
         el.style.width = prevW;
         el.style.height = prevH;
+        el.style.minHeight = prevMinH;
         el.style.maxWidth = prevMaxW;
 
         if (!node.measuredWidth || !node.measuredHeight || Math.abs(node.measuredWidth - realW) > 3 || Math.abs(node.measuredHeight - realH) > 3) {
@@ -1453,9 +1462,9 @@ class App {
     });
 
     // Global image paste listener on Canvas & Nodes (Ctrl+V image)
-    document.addEventListener('paste', (e) => {
+    document.addEventListener('paste', async (e) => {
       const activeEl = document.activeElement;
-      if (activeEl && (activeEl.id === 'right-editor-content' || activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+      if (activeEl && (activeEl.id === 'right-editor-content' || activeEl.closest('#right-editor-panel') || activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
         return; // Skip if user is typing in an input, textarea, or right editor panel
       }
 
@@ -1467,26 +1476,25 @@ class App {
           imagePasted = true;
           const file = items[i].getAsFile();
           if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              const b64 = event.target.result;
-              const selected = this.mindmap.getSelectedNode() || this.mindmap.root;
-              if (selected) {
-                let imagesList = selected.images ? [...selected.images] : (selected.image ? [selected.image] : []);
-                imagesList.push({ src: b64, width: 180, height: 120 });
-                delete selected.customWidth;
-                delete selected.customHeight;
-                this.mindmap.updateNode(selected.id, {
-                  images: imagesList,
-                  customWidth: undefined,
-                  customHeight: undefined
-                });
-                this.saveCurrentMap(false);
-                this.renderMap();
-                showToast('📷 Đã tự động dán & lưu hình ảnh vào Node!', 'success', 2500);
-              }
-            };
-            reader.readAsDataURL(file);
+            e.preventDefault();
+            const b64 = await compressImageFile(file, 1200);
+            const selected = this.mindmap.getSelectedNode() || this.mindmap.root;
+            if (selected) {
+              let imagesList = selected.images ? [...selected.images] : (selected.image ? [selected.image] : []);
+              imagesList.push({ src: b64, width: 180, height: 120 });
+              delete selected.customWidth;
+              delete selected.customHeight;
+              delete selected.measuredWidth;
+              delete selected.measuredHeight;
+              this.mindmap.updateNode(selected.id, {
+                images: imagesList,
+                customWidth: undefined,
+                customHeight: undefined
+              });
+              this.saveCurrentMap(false);
+              this.renderMap();
+              showToast('📷 Đã tự động dán & tối ưu hình ảnh vào Node!', 'success', 2500);
+            }
           }
         }
       }
@@ -2978,7 +2986,7 @@ class App {
       fontSize: fontSize,
       fontFamily: fontFamily,
       textAlign: textAlign,
-      images: []
+      images: this.rightEditorImages || []
     };
 
     if (autoFit) {
@@ -3082,18 +3090,44 @@ class App {
 
     imageBtn?.addEventListener('click', () => imageInput?.click());
 
-    imageInput?.addEventListener('change', (e) => {
+    imageInput?.addEventListener('change', async (e) => {
       const files = Array.from(e.target.files || []);
-      if (files.length > 0) {
-        this.saveRightEditorLocalState();
-      }
-      files.forEach(file => {
+      for (const file of files) {
         if (file.type.startsWith('image/')) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
+          const b64 = await compressImageFile(file, 900);
+          const img = document.createElement('img');
+          img.src = b64;
+          img.className = 'inline-editor-image';
+          img.style.width = '160px';
+          img.style.maxWidth = '100%';
+          img.style.display = 'inline-block';
+          img.style.verticalAlign = 'middle';
+          img.style.margin = '4px 6px';
+          img.contentEditable = 'false';
+          contentEl.appendChild(img);
+          this.saveRightEditorLocalState();
+          showToast('📷 Đã chèn hình ảnh vào nội dung!', 'success', 2000);
+        }
+      }
+      imageInput.value = '';
+    });
+
+    contentEl?.addEventListener('paste', async (e) => {
+      const items = e.clipboardData ? e.clipboardData.items : [];
+      let imagePasted = false;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          imagePasted = true;
+          e.preventDefault();
+          e.stopPropagation();
+          const file = items[i].getAsFile();
+          if (file) {
+            this.saveRightEditorLocalState();
+            const b64 = await compressImageFile(file, 900);
             const sel = window.getSelection();
             const img = document.createElement('img');
-            img.src = event.target.result;
+            img.src = b64;
             img.className = 'inline-editor-image';
             img.style.width = '160px';
             img.style.maxWidth = '100%';
@@ -3115,53 +3149,7 @@ class App {
               contentEl.appendChild(img);
             }
             this.saveRightEditorLocalState();
-            showToast('📷 Đã chèn hình ảnh vào nội dung!', 'success', 2000);
-          };
-          reader.readAsDataURL(file);
-        }
-      });
-      imageInput.value = '';
-    });
-
-    contentEl?.addEventListener('paste', (e) => {
-      const items = e.clipboardData ? e.clipboardData.items : [];
-      let imagePasted = false;
-
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image') !== -1) {
-          imagePasted = true;
-          const file = items[i].getAsFile();
-          if (file) {
-            this.saveRightEditorLocalState();
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              const sel = window.getSelection();
-              const img = document.createElement('img');
-              img.src = event.target.result;
-              img.className = 'inline-editor-image';
-              img.style.width = '160px';
-              img.style.maxWidth = '100%';
-              img.style.display = 'inline-block';
-              img.style.verticalAlign = 'middle';
-              img.style.margin = '4px 6px';
-              img.contentEditable = 'false';
-
-              if (sel && sel.rangeCount > 0 && contentEl.contains(sel.anchorNode)) {
-                const range = sel.getRangeAt(0);
-                range.deleteContents();
-                range.insertNode(img);
-                range.setStartAfter(img);
-                range.collapse(true);
-                sel.removeAllRanges();
-                sel.addRange(range);
-                this.savedRightRange = range.cloneRange();
-              } else {
-                contentEl.appendChild(img);
-              }
-              this.saveRightEditorLocalState();
-              showToast('📷 Đã chèn hình ảnh trực tiếp vào dòng chữ!', 'success', 2000);
-            };
-            reader.readAsDataURL(file);
+            showToast('📷 Đã chèn hình ảnh trực tiếp vào dòng chữ!', 'success', 2000);
           }
         }
       }

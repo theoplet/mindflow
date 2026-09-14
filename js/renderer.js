@@ -1,4 +1,4 @@
-import { $, createElement } from './utils.js';
+import { $, createElement, compressImageFile } from './utils.js';
 import { handleSmartTab, handleSmartEnter, handleSmartSpace, handleSmartBackspace, handleSmartInput } from './smart_editor.js';
 
 export class Renderer {
@@ -274,17 +274,18 @@ export class Renderer {
         for (let i = 0; i < items.length; i++) {
           if (items[i].type.indexOf('image') !== -1) {
             e.preventDefault();
+            e.stopPropagation();
             hasImage = true;
             const blob = items[i].getAsFile();
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              const currentImages = Array.isArray(node.images) ? [...node.images] : (node.image ? [node.image] : []);
-              currentImages.push({ src: event.target.result, width: 160, height: 100 });
-              if (this.onNodeImagesUpdate) {
-                this.onNodeImagesUpdate(node.id, currentImages);
-              }
-            };
-            reader.readAsDataURL(blob);
+            if (blob) {
+              compressImageFile(blob, 1200).then((compressedSrc) => {
+                const currentImages = Array.isArray(node.images) ? [...node.images] : (node.image ? [node.image] : []);
+                currentImages.push({ src: compressedSrc, width: 160, height: 100 });
+                if (this.onNodeImagesUpdate) {
+                  this.onNodeImagesUpdate(node.id, currentImages);
+                }
+              });
+            }
           }
         }
         if (hasImage) return;
