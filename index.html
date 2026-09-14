@@ -644,8 +644,20 @@
       </div>
 
       <!-- Rich Editor Content Editable Area -->
-      <div class="right-editor-area-wrapper">
-        <label class="editor-label">Văn bản & Nội dung Node (Hỗ trợ Paste ảnh Ctrl+V):</label>
+      <div id="right-editor-area-wrapper" class="right-editor-area-wrapper">
+        <div class="editor-area-header">
+          <label class="editor-label">Văn bản & Nội dung Node (Hỗ trợ Paste ảnh Ctrl+V):</label>
+          <div class="editor-area-actions">
+            <button id="btn-toggle-wrap-editor" class="fmt-btn fmt-btn-sm" type="button" title="Mở rộng chữ theo chiều ngang (Không ngắt dòng / Bật thanh cuộn ngang)">
+              <span>↔️</span>
+              <span class="btn-text">Tràn ngang</span>
+            </button>
+            <button id="btn-expand-text-frame" class="fmt-btn fmt-btn-sm" type="button" title="Phóng rộng khung soạn thảo sang trái để viết thoải mái">
+              <span>⛶</span>
+              <span class="btn-text">Mở rộng khung</span>
+            </button>
+          </div>
+        </div>
         <div id="right-editor-content" class="right-editor-content" contenteditable="true" placeholder="Nhập chữ, dán ảnh (Ctrl+V) hoặc chèn công thức toán..."></div>
       </div>
 

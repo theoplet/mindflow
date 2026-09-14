@@ -19,7 +19,7 @@ export class Layout {
       // 1. Measure nodes
       const measure = (node, depth = 0) => {
         const size = this.estimateNodeSize(node, depth === 0);
-        nodeMap.set(node.id, { x: 0, y: 0, width: size.width, height: size.height, node: node });
+        nodeMap.set(node.id, { x: 0, y: 0, width: size.width, height: size.height, depth, node: node });
         
         if (!node.collapsed && node.children) {
           node.children.forEach(child => measure(child, depth + 1));
@@ -113,9 +113,9 @@ export class Layout {
       return { width: node.measuredWidth, height: node.measuredHeight };
     }
 
-    const fontSize = node.fontSize || (isRoot ? 18 : 14);
-    const charWidth = fontSize * 0.58;
-    const paddingX = isRoot ? 48 : 28;
+    const fontSize = node.fontSize || (isRoot ? 20 : 14);
+    const charWidth = fontSize * (isRoot ? 0.68 : 0.65);
+    const paddingX = isRoot ? 40 : 24;
     const paddingY = isRoot ? 24 : 16;
     
     let textStr = String(node.text || '');
@@ -142,14 +142,14 @@ export class Layout {
     const isComplexMath = hasMath && (textStr.includes('\\begin') || textStr.includes('\\frac') || textStr.includes('\\int') || textStr.includes('\\sum') || textStr.includes('\\matrix') || textStr.includes('pmatrix') || textStr.includes('\\partial') || textStr.includes('\\lim'));
 
     // Target max width for comfortable horizontal line wrapping
-    let targetMaxWidth = isRoot ? 480 : 380;
+    let targetMaxWidth = isRoot ? 520 : 420;
     if (isComplexMath) {
       targetMaxWidth = 680;
     } else if (hasMath) {
       targetMaxWidth = 520;
     }
 
-    let width = Math.max(100, Math.min(targetMaxWidth, textLen * charWidth + paddingX * 2));
+    let width = Math.max(isRoot ? 185 : 110, Math.min(targetMaxWidth, textLen * charWidth + paddingX * 2));
     if (hasMath) {
       width = Math.max(380, width);
     }
@@ -158,11 +158,12 @@ export class Layout {
       width = Math.max(width, Math.min(targetMaxWidth, 220));
     }
 
-    const availableTextWidth = Math.max(60, width - paddingX * 2);
+    const availableTextWidth = Math.max(80, width - paddingX * 2);
     
     // Count explicit linebreaks (<br>, \n, <p>)
     const explicitLines = (textStr.match(/<br\s*\/?>|\n|<\/p>/gi) || []).length;
-    const wrapLines = Math.ceil((textLen * charWidth) / availableTextWidth) || 1;
+    const isSingleShortPhrase = explicitLines === 0 && textLen <= 25;
+    const wrapLines = isSingleShortPhrase ? 1 : (Math.ceil((textLen * charWidth) / availableTextWidth) || 1);
     const totalLines = Math.max(wrapLines, explicitLines + 1);
 
     let height = totalLines * fontSize * 1.6 + paddingY * 2;

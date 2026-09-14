@@ -333,8 +333,14 @@
   padding: 2px 0;
 }
 
+.mindmap-node.editing {
+  z-index: 100 !important;
+  min-width: max-content;
+}
+
 .mindmap-node.editing .node-text {
   cursor: text;
+  min-width: 80px;
 }
 
 /* 7. Collapse toggle (Outset, Faded & Separated) */

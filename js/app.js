@@ -362,12 +362,19 @@ class App {
         const prevMaxW = el.style.maxWidth;
         const prevMinH = el.style.minHeight;
 
+        const textSpan = el.querySelector('.node-text');
+        const prevTextWs = textSpan ? textSpan.style.whiteSpace : '';
+        const isSinglePhrase = !node.text.includes('\n') && !node.text.includes('<br') && !node.text.includes('</p>');
+        if (textSpan && isSinglePhrase) {
+          textSpan.style.whiteSpace = 'nowrap';
+        }
+
         el.style.width = 'auto';
         el.style.height = 'auto';
         el.style.minHeight = '0px';
         el.style.maxWidth = `${targetMaxWidth}px`;
 
-        let realW = el.offsetWidth;
+        let realW = Math.ceil(el.offsetWidth) + (isSinglePhrase ? 14 : 4);
         let realH = el.offsetHeight;
 
         if (el.scrollHeight > el.clientHeight + 4) {
@@ -379,6 +386,10 @@ class App {
         const maxSafeH = 1200;
         realW = Math.min(realW, maxSafeW);
         realH = Math.min(realH, maxSafeH);
+
+        if (textSpan) {
+          textSpan.style.whiteSpace = prevTextWs;
+        }
 
         el.style.width = prevW;
         el.style.height = prevH;
@@ -2693,6 +2704,11 @@ class App {
         document.activeElement.blur();
       }
     }
+    const areaWrapper = $('#right-editor-area-wrapper');
+    if (areaWrapper) {
+      areaWrapper.classList.remove('expanded-frame');
+      $('#btn-expand-text-frame')?.classList.remove('active');
+    }
     this.editingRightNodeId = null;
     this.rightEditorImages = [];
     this.rightEditorHistory = null;
@@ -3158,6 +3174,12 @@ class App {
       } else if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
+        const areaWrapper = $('#right-editor-area-wrapper');
+        if (areaWrapper?.classList.contains('expanded-frame')) {
+          areaWrapper.classList.remove('expanded-frame');
+          $('#btn-expand-text-frame')?.classList.remove('active');
+          return;
+        }
         this.closeRightEditorPanel();
       } else if ((isCtrl && e.shiftKey && (e.key === 'e' || e.key === 'E')) || (e.altKey && (e.key === 'w' || e.key === 'W'))) {
         e.preventDefault();
@@ -3170,6 +3192,32 @@ class App {
     const imageInput = $('#right-image-input');
     const imageBtn = $('#right-fmt-image-btn');
     const mathBtn = $('#right-fmt-math-btn');
+    const wrapBtn = $('#btn-toggle-wrap-editor');
+    const expandFrameBtn = $('#btn-expand-text-frame');
+    const areaWrapper = $('#right-editor-area-wrapper');
+
+    // Restore saved wrap preference
+    const savedWrap = localStorage.getItem('mindflow_editor_nowrap');
+    if (savedWrap === '1') {
+      contentEl?.classList.add('no-wrap');
+      wrapBtn?.classList.add('active');
+    }
+
+    // Toggle Word Wrap / Horizontal Text Expansion in inner text box
+    wrapBtn?.addEventListener('click', () => {
+      const isNoWrap = contentEl?.classList.toggle('no-wrap');
+      wrapBtn.classList.toggle('active', !!isNoWrap);
+      localStorage.setItem('mindflow_editor_nowrap', isNoWrap ? '1' : '0');
+    });
+
+    // Toggle Expanded Frame Mode (Wide Horizontal Workspace) for inner text box
+    expandFrameBtn?.addEventListener('click', () => {
+      const isExpanded = areaWrapper?.classList.toggle('expanded-frame');
+      expandFrameBtn.classList.toggle('active', !!isExpanded);
+      if (isExpanded) {
+        contentEl?.focus();
+      }
+    });
 
     // Debounced local state recording on typing input
     const debouncedInputSave = debounce(() => {
