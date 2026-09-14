@@ -138,18 +138,24 @@ export class Layout {
     const plainText = cleanForLength.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     const textLen = Math.max(1, plainText.length);
 
+    // Split lines as set up by user (explicit breaks or HTML paragraphs/divs)
+    const rawLines = cleanForLength.split(/<br\s*\/?>|\n|<\/p>|<\/div>/gi)
+                                   .map(l => l.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
+                                   .filter(l => l.length > 0);
+    const maxLineLen = rawLines.reduce((max, l) => Math.max(max, l.length), 0) || textLen;
+    const naturalTextWidth = maxLineLen * charWidth;
+
     const hasMath = textStr.includes('\\') || textStr.includes('$');
     const isComplexMath = hasMath && (textStr.includes('\\begin') || textStr.includes('\\frac') || textStr.includes('\\int') || textStr.includes('\\sum') || textStr.includes('\\matrix') || textStr.includes('pmatrix') || textStr.includes('\\partial') || textStr.includes('\\lim'));
 
-    // Target max width for comfortable horizontal line wrapping
-    let targetMaxWidth = isRoot ? 520 : 420;
+    let targetMaxWidth = Math.max(isRoot ? 750 : 650, naturalTextWidth + paddingX * 2 + 40);
     if (isComplexMath) {
-      targetMaxWidth = 680;
+      targetMaxWidth = Math.max(targetMaxWidth, 780);
     } else if (hasMath) {
-      targetMaxWidth = 520;
+      targetMaxWidth = Math.max(targetMaxWidth, 580);
     }
 
-    let width = Math.max(isRoot ? 185 : 110, Math.min(targetMaxWidth, textLen * charWidth + paddingX * 2));
+    let width = Math.max(isRoot ? 185 : 110, Math.min(1600, naturalTextWidth + paddingX * 2 + 10));
     if (hasMath) {
       width = Math.max(380, width);
     }
@@ -158,14 +164,7 @@ export class Layout {
       width = Math.max(width, Math.min(targetMaxWidth, 220));
     }
 
-    const availableTextWidth = Math.max(80, width - paddingX * 2);
-    
-    // Count explicit linebreaks (<br>, \n, <p>)
-    const explicitLines = (textStr.match(/<br\s*\/?>|\n|<\/p>/gi) || []).length;
-    const isSingleShortPhrase = explicitLines === 0 && textLen <= 25;
-    const wrapLines = isSingleShortPhrase ? 1 : (Math.ceil((textLen * charWidth) / availableTextWidth) || 1);
-    const totalLines = Math.max(wrapLines, explicitLines + 1);
-
+    const totalLines = Math.max(1, rawLines.length);
     let height = totalLines * fontSize * 1.6 + paddingY * 2;
 
     if (isComplexMath) {
@@ -193,7 +192,7 @@ export class Layout {
     if (node.customHeight) height = node.customHeight;
 
     // Absolute safety bounds against infinite runaway dimensions
-    if (!node.customWidth) width = Math.min(width, 700);
+    if (!node.customWidth) width = Math.min(width, 1600);
     if (!node.customHeight) height = Math.min(height, 1500);
 
     return { width: Math.ceil(width), height: Math.ceil(height) };

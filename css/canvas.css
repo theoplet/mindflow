@@ -319,8 +319,8 @@
   display: block;
   text-align: left;
   outline: none;
-  word-break: break-word;
-  overflow-wrap: break-word;
+  word-break: normal;
+  overflow-wrap: normal;
   white-space: pre-wrap;
   tab-size: 4;
   -moz-tab-size: 4;

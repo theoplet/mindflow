@@ -352,11 +352,6 @@ class App {
       if (node && !node.customWidth && !node.customHeight) {
         const isRoot = node.id === this.mindmap.root?.id || this.mindmap.isRoot(node.id);
         const imagesCount = (node.images && node.images.length) ? node.images.length : (node.image ? 1 : 0);
-        let targetMaxWidth = isRoot ? 500 : 400;
-        if (imagesCount > 0) {
-          targetMaxWidth = Math.max(targetMaxWidth, Math.min(560, imagesCount * 170 + 60));
-        }
-
         const prevW = el.style.width;
         const prevH = el.style.height;
         const prevMaxW = el.style.maxWidth;
@@ -364,26 +359,25 @@ class App {
 
         const textSpan = el.querySelector('.node-text');
         const prevTextWs = textSpan ? textSpan.style.whiteSpace : '';
-        const isSinglePhrase = !node.text.includes('\n') && !node.text.includes('<br') && !node.text.includes('</p>');
-        if (textSpan && isSinglePhrase) {
-          textSpan.style.whiteSpace = 'nowrap';
+        if (textSpan) {
+          textSpan.style.whiteSpace = 'pre';
         }
 
         el.style.width = 'auto';
         el.style.height = 'auto';
         el.style.minHeight = '0px';
-        el.style.maxWidth = `${targetMaxWidth}px`;
+        el.style.maxWidth = '1500px';
 
-        let realW = Math.ceil(el.offsetWidth) + (isSinglePhrase ? 14 : 4);
+        let realW = Math.ceil(el.offsetWidth) + 14;
         let realH = el.offsetHeight;
 
         if (el.scrollHeight > el.clientHeight + 4) {
           realH = Math.max(realH, el.scrollHeight + 8);
         }
 
-        // Safety clamp on measured DOM size to prevent infinite runaway dimensions
-        const maxSafeW = isRoot ? 600 : 480;
-        const maxSafeH = 1200;
+        // Safety clamp on measured DOM size
+        const maxSafeW = 1600;
+        const maxSafeH = 1500;
         realW = Math.min(realW, maxSafeW);
         realH = Math.min(realH, maxSafeH);
 
@@ -2704,11 +2698,6 @@ class App {
         document.activeElement.blur();
       }
     }
-    const areaWrapper = $('#right-editor-area-wrapper');
-    if (areaWrapper) {
-      areaWrapper.classList.remove('expanded-frame');
-      $('#btn-expand-text-frame')?.classList.remove('active');
-    }
     this.editingRightNodeId = null;
     this.rightEditorImages = [];
     this.rightEditorHistory = null;
@@ -3004,18 +2993,16 @@ class App {
     const fontFamily = $('#right-fmt-font-family')?.value || 'Inter';
     const textAlign = contentEl.style.textAlign || 'left';
 
+    // Automatically adapt node size to user's text setup
     const updatePayload = {
       text: newText,
       fontSize: fontSize,
       fontFamily: fontFamily,
       textAlign: textAlign,
-      images: this.rightEditorImages || []
+      images: this.rightEditorImages || [],
+      customWidth: undefined,
+      customHeight: undefined
     };
-
-    if (autoFit) {
-      updatePayload.customWidth = undefined;
-      updatePayload.customHeight = undefined;
-    }
 
     // Single atomic update to node
     this.mindmap.updateNode(this.editingRightNodeId, updatePayload);
@@ -3174,12 +3161,6 @@ class App {
       } else if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        const areaWrapper = $('#right-editor-area-wrapper');
-        if (areaWrapper?.classList.contains('expanded-frame')) {
-          areaWrapper.classList.remove('expanded-frame');
-          $('#btn-expand-text-frame')?.classList.remove('active');
-          return;
-        }
         this.closeRightEditorPanel();
       } else if ((isCtrl && e.shiftKey && (e.key === 'e' || e.key === 'E')) || (e.altKey && (e.key === 'w' || e.key === 'W'))) {
         e.preventDefault();
@@ -3192,32 +3173,18 @@ class App {
     const imageInput = $('#right-image-input');
     const imageBtn = $('#right-fmt-image-btn');
     const mathBtn = $('#right-fmt-math-btn');
-    const wrapBtn = $('#btn-toggle-wrap-editor');
-    const expandFrameBtn = $('#btn-expand-text-frame');
-    const areaWrapper = $('#right-editor-area-wrapper');
 
-    // Restore saved wrap preference
-    const savedWrap = localStorage.getItem('mindflow_editor_nowrap');
-    if (savedWrap === '1') {
-      contentEl?.classList.add('no-wrap');
-      wrapBtn?.classList.add('active');
-    }
-
-    // Toggle Word Wrap / Horizontal Text Expansion in inner text box
-    wrapBtn?.addEventListener('click', () => {
-      const isNoWrap = contentEl?.classList.toggle('no-wrap');
-      wrapBtn.classList.toggle('active', !!isNoWrap);
-      localStorage.setItem('mindflow_editor_nowrap', isNoWrap ? '1' : '0');
-    });
-
-    // Toggle Expanded Frame Mode (Wide Horizontal Workspace) for inner text box
-    expandFrameBtn?.addEventListener('click', () => {
-      const isExpanded = areaWrapper?.classList.toggle('expanded-frame');
-      expandFrameBtn.classList.toggle('active', !!isExpanded);
-      if (isExpanded) {
-        contentEl?.focus();
+    // Horizontal scroll support via mouse wheel (or Shift+Wheel)
+    contentEl?.addEventListener('wheel', (e) => {
+      if (contentEl.scrollWidth > contentEl.clientWidth) {
+        if (e.shiftKey || Math.abs(e.deltaX) > 0) return; // browser native horizontal
+        // When user scrolls wheel horizontally or if text has horizontal overflow:
+        if (Math.abs(e.deltaY) > 0 && e.altKey) {
+          contentEl.scrollLeft += e.deltaY;
+          e.preventDefault();
+        }
       }
-    });
+    }, { passive: false });
 
     // Debounced local state recording on typing input
     const debouncedInputSave = debounce(() => {
