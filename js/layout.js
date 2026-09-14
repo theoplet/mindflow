@@ -141,12 +141,12 @@ export class Layout {
     const hasMath = textStr.includes('\\') || textStr.includes('$');
     const isComplexMath = hasMath && (textStr.includes('\\begin') || textStr.includes('\\frac') || textStr.includes('\\int') || textStr.includes('\\sum') || textStr.includes('\\matrix') || textStr.includes('pmatrix') || textStr.includes('\\partial') || textStr.includes('\\lim'));
 
-    // Target max width for comfortable line wrapping
-    let targetMaxWidth = isRoot ? 440 : 340;
+    // Target max width for comfortable horizontal line wrapping
+    let targetMaxWidth = isRoot ? 480 : 380;
     if (isComplexMath) {
-      targetMaxWidth = 650;
+      targetMaxWidth = 680;
     } else if (hasMath) {
-      targetMaxWidth = 480;
+      targetMaxWidth = 520;
     }
 
     let width = Math.max(100, Math.min(targetMaxWidth, textLen * charWidth + paddingX * 2));

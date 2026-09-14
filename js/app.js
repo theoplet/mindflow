@@ -352,9 +352,9 @@ class App {
       if (node && !node.customWidth && !node.customHeight) {
         const isRoot = node.id === this.mindmap.root?.id || this.mindmap.isRoot(node.id);
         const imagesCount = (node.images && node.images.length) ? node.images.length : (node.image ? 1 : 0);
-        let targetMaxWidth = isRoot ? 460 : 360;
+        let targetMaxWidth = isRoot ? 500 : 400;
         if (imagesCount > 0) {
-          targetMaxWidth = Math.max(targetMaxWidth, Math.min(520, imagesCount * 170 + 60));
+          targetMaxWidth = Math.max(targetMaxWidth, Math.min(560, imagesCount * 170 + 60));
         }
 
         const prevW = el.style.width;
@@ -2672,6 +2672,13 @@ class App {
     // Load or initialize persistent undo/redo history for this specific node
     this.loadOrCreateRightEditorHistory(node.id);
 
+    try {
+      const savedWidth = parseInt(localStorage.getItem('mindflow_context_box_width'), 10);
+      if (savedWidth && savedWidth >= 380 && savedWidth <= window.innerWidth - 40) {
+        drawer.style.width = `${savedWidth}px`;
+      }
+    } catch (err) {}
+
     drawer?.classList.add('open');
     setTimeout(() => {
       content?.focus();
@@ -3029,6 +3036,99 @@ class App {
     $('#right-fmt-undo')?.addEventListener('click', () => this.undoRightEditor());
     $('#right-fmt-redo')?.addEventListener('click', () => this.redoRightEditor());
 
+    // Horizontal Drag Resize Handle for Context Box
+    const resizeHandle = $('#right-editor-resize-handle');
+    const drawer = $('#right-editor-panel');
+    let isResizingDrawer = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    const onResizeStart = (clientX) => {
+      isResizingDrawer = true;
+      startX = clientX;
+      startWidth = drawer ? drawer.offsetWidth : 580;
+      drawer?.classList.add('resizing');
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+    };
+
+    const onResizeMove = (clientX) => {
+      if (!isResizingDrawer || !drawer) return;
+      const dx = startX - clientX;
+      const minW = 380;
+      const maxW = Math.max(minW, window.innerWidth - 50);
+      const newWidth = Math.min(maxW, Math.max(minW, startWidth + dx));
+      drawer.style.width = `${newWidth}px`;
+    };
+
+    const onResizeEnd = () => {
+      if (isResizingDrawer) {
+        isResizingDrawer = false;
+        drawer?.classList.remove('resizing');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        if (drawer) {
+          try {
+            localStorage.setItem('mindflow_context_box_width', String(drawer.offsetWidth));
+          } catch (err) {}
+        }
+      }
+    };
+
+    resizeHandle?.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onResizeStart(e.clientX);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (isResizingDrawer) {
+        onResizeMove(e.clientX);
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isResizingDrawer) {
+        onResizeEnd();
+      }
+    });
+
+    // Touch support for dragging resize handle on mobile / tablets
+    resizeHandle?.addEventListener('touchstart', (e) => {
+      if (e.touches && e.touches[0]) {
+        onResizeStart(e.touches[0].clientX);
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchmove', (e) => {
+      if (isResizingDrawer && e.touches && e.touches[0]) {
+        onResizeMove(e.touches[0].clientX);
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchend', () => {
+      if (isResizingDrawer) {
+        onResizeEnd();
+      }
+    });
+
+    // Quick Width Toggle Button (Standard 580px vs Wide Mode)
+    $('#btn-toggle-width-right-editor')?.addEventListener('click', () => {
+      if (!drawer) return;
+      const currentWidth = drawer.offsetWidth;
+      const isWide = currentWidth >= 700;
+      if (isWide) {
+        drawer.style.width = '580px';
+        try { localStorage.setItem('mindflow_context_box_width', '580'); } catch (err) {}
+        showToast('↔ Thu gọn chiều ngang (580px)', 'info', 1500);
+      } else {
+        const wideW = Math.min(880, Math.round(window.innerWidth * 0.65));
+        drawer.style.width = `${wideW}px`;
+        try { localStorage.setItem('mindflow_context_box_width', String(wideW)); } catch (err) {}
+        showToast('↔ Mở rộng chiều ngang (' + wideW + 'px)', 'info', 1500);
+      }
+    });
+
     // Intercept keyboard shortcuts in Context Box ONLY when panel is open
     $('#right-editor-panel')?.addEventListener('keydown', (e) => {
       const drawer = $('#right-editor-panel');
@@ -3059,6 +3159,10 @@ class App {
         e.preventDefault();
         e.stopPropagation();
         this.closeRightEditorPanel();
+      } else if ((isCtrl && e.shiftKey && (e.key === 'e' || e.key === 'E')) || (e.altKey && (e.key === 'w' || e.key === 'W'))) {
+        e.preventDefault();
+        e.stopPropagation();
+        $('#btn-toggle-width-right-editor')?.click();
       }
     });
 
