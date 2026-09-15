@@ -170,8 +170,9 @@ export class Renderer {
       element.style.height = node.customHeight ? `${node.customHeight}px` : 'auto';
     }
 
-    if (node.color && !isRoot) {
-      element.style.borderLeft = `3px solid ${node.color}`;
+    if (node.color) {
+      element.style.background = node.color;
+      element.style.borderLeft = 'none';
     }
 
     // Top-Left Icon Badge
@@ -247,6 +248,14 @@ export class Renderer {
         textSpan.style.textShadow = '0 1px 3px rgba(0,0,0,0.9), 0 0 2px #000';
       } else {
         textSpan.style.textShadow = '';
+      }
+    } else if (node.color) {
+      const contrastColor = this.getContrastTextColor(node.color);
+      textSpan.style.color = contrastColor;
+      if (contrastColor === '#FFFFFF') {
+        textSpan.style.textShadow = '0 1px 3px rgba(0,0,0,0.9), 0 0 2px #000';
+      } else {
+        textSpan.style.textShadow = 'none';
       }
     }
     if (node.fontWeight) textSpan.style.fontWeight = node.fontWeight;
@@ -511,6 +520,17 @@ export class Renderer {
         } else {
           textSpan.style.textShadow = '';
         }
+      } else if (node.color) {
+        textSpan.style.backgroundColor = '';
+        textSpan.style.padding = '';
+        textSpan.style.borderRadius = '';
+        const contrastColor = this.getContrastTextColor(node.color);
+        textSpan.style.color = contrastColor;
+        if (contrastColor === '#FFFFFF') {
+          textSpan.style.textShadow = '0 1px 3px rgba(0,0,0,0.9), 0 0 2px #000';
+        } else {
+          textSpan.style.textShadow = 'none';
+        }
       } else {
         textSpan.style.backgroundColor = '';
         textSpan.style.padding = '';
@@ -631,12 +651,10 @@ export class Renderer {
     if (wasEditing) element.classList.add('editing');
     if (hadMath) element.classList.add('has-math');
     if (node.color) {
-      if (!isRoot) {
-        element.style.borderLeft = `3px solid ${node.color}`;
-      } else {
-        element.style.borderLeft = '';
-      }
+      element.style.background = node.color;
+      element.style.borderLeft = 'none';
     } else {
+      element.style.background = '';
       element.style.borderLeft = '';
     }
   }
@@ -720,6 +738,69 @@ export class Renderer {
     }, { passive: true });
 
     return imgWrapper;
+  }
+
+  /**
+   * Tính toán màu chữ tương phản dựa trên luminance của nền (trắng hoặc tối)
+   */
+  getContrastTextColor(hex) {
+    if (!hex) return '#FFFFFF';
+    let c = String(hex).replace('#', '').trim();
+    if (c.length === 3) c = c.split('').map(x => x + x).join('');
+    if (c.length === 6) {
+      const r = parseInt(c.substr(0, 2), 16) || 0;
+      const g = parseInt(c.substr(2, 2), 16) || 0;
+      const b = parseInt(c.substr(4, 2), 16) || 0;
+      const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+      return yiq >= 165 ? '#0F172A' : '#FFFFFF';
+    }
+    return '#FFFFFF';
+  }
+
+  /**
+   * Tạo (hoặc tái sử dụng) marker mũi tên với màu + kích thước cố định,
+   * không phụ thuộc stroke-width của line để tránh mũi tên bị phóng to
+   * bất thường trên line dày.
+   */
+  getOrCreateArrowMarker(color, lineWidth, direction) {
+    if (!this.arrowMarkerCache) this.arrowMarkerCache = new Map();
+
+    // Kích thước mũi tên: có scale nhẹ theo độ dày line nhưng luôn được
+    // clamp trong khoảng hợp lý để không bao giờ quá to hoặc quá nhỏ.
+    const size = Math.max(9, Math.min(18, 8 + lineWidth * 1.2));
+    const safeColor = (color || '#94A3B8').replace(/[^a-zA-Z0-9#]/g, '');
+    const key = `${direction}-${safeColor}-${Math.round(size)}`;
+
+    if (this.arrowMarkerCache.has(key)) {
+      return key;
+    }
+
+    let defs = this.svg.querySelector('defs');
+    if (!defs) {
+      defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      this.svg.insertBefore(defs, this.svg.firstChild);
+    }
+
+    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    marker.setAttribute('id', key);
+    marker.setAttribute('viewBox', '0 0 10 10');
+    marker.setAttribute('markerWidth', size);
+    marker.setAttribute('markerHeight', size);
+    marker.setAttribute('markerUnits', 'userSpaceOnUse');
+    marker.setAttribute('orient', 'auto');
+    marker.setAttribute('refX', direction === 'end' ? '8' : '2');
+    marker.setAttribute('refY', '5');
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute(
+      'd',
+      direction === 'end' ? 'M 0 1.2 L 10 5 L 0 8.8 z' : 'M 10 1.2 L 0 5 L 10 8.8 z'
+    );
+    path.setAttribute('fill', color || '#94A3B8');
+    marker.appendChild(path);
+    defs.appendChild(marker);
+    this.arrowMarkerCache.set(key, true);
+    return key;
   }
 
   /**
@@ -818,18 +899,22 @@ export class Renderer {
         pathElement.setAttribute('class', `connector-path ${lineD} ${this.allLinesSelected ? 'selected-connector' : ''}`);
 
         const arrowDir = child.lineArrow || gStyle.arrow || 'none';
-        if (arrowDir === 'end' || arrowDir === true) {
-          pathElement.setAttribute('marker-end', 'url(#arrow-end)');
-          pathElement.removeAttribute('marker-start');
-        } else if (arrowDir === 'start') {
-          pathElement.setAttribute('marker-start', 'url(#arrow-start)');
+        if (arrowDir === 'none') {
           pathElement.removeAttribute('marker-end');
-        } else if (arrowDir === 'both') {
-          pathElement.setAttribute('marker-end', 'url(#arrow-end)');
-          pathElement.setAttribute('marker-start', 'url(#arrow-start)');
+          pathElement.removeAttribute('marker-start');
         } else {
-          pathElement.removeAttribute('marker-end');
-          pathElement.removeAttribute('marker-start');
+          if (arrowDir === 'end' || arrowDir === true || arrowDir === 'both') {
+            const endKey = this.getOrCreateArrowMarker(lineColor, lineW, 'end');
+            pathElement.setAttribute('marker-end', `url(#${endKey})`);
+          } else {
+            pathElement.removeAttribute('marker-end');
+          }
+          if (arrowDir === 'start' || arrowDir === 'both') {
+            const startKey = this.getOrCreateArrowMarker(lineColor, lineW, 'start');
+            pathElement.setAttribute('marker-start', `url(#${startKey})`);
+          } else {
+            pathElement.removeAttribute('marker-start');
+          }
         }
 
         // Render Line Text Label if present
@@ -988,18 +1073,22 @@ export class Renderer {
       pathElement.setAttribute('class', `free-connector-path ${lineD} ${isSelected ? 'selected-connector' : ''}`);
 
       const arrowDir = conn.lineArrow || 'none';
-      if (arrowDir === 'end' || arrowDir === true) {
-        pathElement.setAttribute('marker-end', 'url(#arrow-end)');
-        pathElement.removeAttribute('marker-start');
-      } else if (arrowDir === 'start') {
-        pathElement.setAttribute('marker-start', 'url(#arrow-start)');
+      if (arrowDir === 'none') {
         pathElement.removeAttribute('marker-end');
-      } else if (arrowDir === 'both') {
-        pathElement.setAttribute('marker-end', 'url(#arrow-end)');
-        pathElement.setAttribute('marker-start', 'url(#arrow-start)');
+        pathElement.removeAttribute('marker-start');
       } else {
-        pathElement.removeAttribute('marker-end');
-        pathElement.removeAttribute('marker-start');
+        if (arrowDir === 'end' || arrowDir === true || arrowDir === 'both') {
+          const endKey = this.getOrCreateArrowMarker(lineColor, lineW, 'end');
+          pathElement.setAttribute('marker-end', `url(#${endKey})`);
+        } else {
+          pathElement.removeAttribute('marker-end');
+        }
+        if (arrowDir === 'start' || arrowDir === 'both') {
+          const startKey = this.getOrCreateArrowMarker(lineColor, lineW, 'start');
+          pathElement.setAttribute('marker-start', `url(#${startKey})`);
+        } else {
+          pathElement.removeAttribute('marker-start');
+        }
       }
 
       // Line Text Label

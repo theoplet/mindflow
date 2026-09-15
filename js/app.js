@@ -242,6 +242,8 @@ class App {
     $('#fmt-color-palette')?.classList.add('hidden');
     this.allLinesSelected = false;
     this.selectedLineChildId = null;
+    this.selectedConnectionId = null;
+    if (this.renderer) this.renderer.selectedConnectionId = null;
     $('#btn-select-all-lines')?.classList.remove('active');
   }
 
@@ -1009,6 +1011,11 @@ class App {
     // Select All Lines / Line styling box
     $('#btn-select-all-lines')?.addEventListener('click', () => {
       this.allLinesSelected = !this.allLinesSelected;
+      // Luôn xóa mọi selection line cụ thể trước đó để tránh việc các nút
+      // style chỉ áp dụng lên 1 line cũ thay vì toàn bộ.
+      this.selectedLineChildId = null;
+      this.selectedConnectionId = null;
+      if (this.renderer) this.renderer.selectedConnectionId = null;
       $('#btn-select-all-lines').classList.toggle('active', this.allLinesSelected);
       $('#line-context-box').classList.toggle('hidden', !this.allLinesSelected);
       this.renderMap();
