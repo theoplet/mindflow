@@ -181,6 +181,11 @@
   box-shadow: 0 0 0 2px currentColor;
 }
 
+.color-swatch[data-color="#000000"].active {
+  border-color: #FFFFFF !important;
+  box-shadow: 0 0 0 2px #38BDF8 !important;
+}
+
 /* 9. Icon picker */
 .icon-picker {
   display: grid;
