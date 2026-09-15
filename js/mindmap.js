@@ -101,7 +101,7 @@ export class MindMap {
 
   createDefault() {
     this.roots = [];
-    const root = this.createNode('Central Topic', '#6C5CE7', '🧠');
+    const root = this.createNode('Central Topic', null, '🧠');
     this.roots.push(root);
     this.nodeMap.set(root.id, root);
     
@@ -120,7 +120,7 @@ export class MindMap {
       id,
       text,
       children: [],
-      color: color || '#6C5CE7',
+      color: color || null,
       icon,
       collapsed: false,
       notes: '',
@@ -151,7 +151,7 @@ export class MindMap {
   }
 
   addCentralTopic(text = 'Central Topic', x = 0, y = 0) {
-    const newRoot = this.createNode(text, '#A855F7', '💡');
+    const newRoot = this.createNode(text, null, '💡');
     newRoot.customX = x;
     newRoot.customY = y;
     this.roots.push(newRoot);
@@ -188,7 +188,7 @@ export class MindMap {
     const parent = this.findNode(parentId);
     if (!parent) return null;
     
-    const newNode = this.createNode(text, parent.color);
+    const newNode = this.createNode(text, null);
     parent.children.push(newNode);
     this.nodeMap.set(newNode.id, newNode);
     
@@ -208,7 +208,7 @@ export class MindMap {
     if (!parent) return null;
     
     const siblingIndex = parent.children.findIndex(c => c.id === nodeId);
-    const newNode = this.createNode(text, parent.color);
+    const newNode = this.createNode(text, null);
     
     parent.children.splice(siblingIndex + 1, 0, newNode);
     this.nodeMap.set(newNode.id, newNode);

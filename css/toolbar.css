@@ -186,6 +186,11 @@
   box-shadow: 0 0 0 2px #38BDF8 !important;
 }
 
+.color-swatch[data-color=""].active {
+  border-color: #FFFFFF !important;
+  box-shadow: 0 0 0 2px #6C5CE7 !important;
+}
+
 /* 9. Icon picker */
 .icon-picker {
   display: grid;
