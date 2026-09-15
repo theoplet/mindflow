@@ -3,6 +3,9 @@
  * Handles Google OAuth 2.0 authentication and Drive REST API v3 operations.
  */
 
+export const MINDFLOW_MIME = 'application/vnd.mindflow+json';
+export const DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.install https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email';
+
 export class GDrive {
   constructor() {
     this.clientId = localStorage.getItem('mindflow_gdrive_client_id') || '';
@@ -55,7 +58,7 @@ export class GDrive {
       if (window.google && window.google.accounts && window.google.accounts.oauth2) {
         const client = window.google.accounts.oauth2.initTokenClient({
           client_id: this.clientId,
-          scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+          scope: DRIVE_SCOPES,
           callback: (response) => {
             if (response.error) {
               reject(new Error(response.error_description || response.error));
@@ -74,7 +77,7 @@ export class GDrive {
           `client_id=${encodeURIComponent(this.clientId)}` +
           `&redirect_uri=${encodeURIComponent(window.location.origin + window.location.pathname)}` +
           `&response_type=token` +
-          `&scope=${encodeURIComponent('https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email')}` +
+          `&scope=${encodeURIComponent(DRIVE_SCOPES)}` +
           `&prompt=consent`;
 
         const width = 500;
@@ -109,6 +112,184 @@ export class GDrive {
         }, 500);
       }
     });
+  }
+
+  /**
+   * Ensure access token is available, trying silent GIS request first with loginHint and prompt: ''.
+   * Fallback to interactive authorize() if silent request fails or requires interaction.
+   * @param {string} [loginHint] Optional user ID / email hint from Google Drive state
+   * @returns {Promise<string>} Access token
+   */
+  async ensureToken(loginHint = '') {
+    if (this.isConnected()) {
+      return this.token;
+    }
+
+    if (!this.hasClientId()) {
+      throw new Error('Google OAuth Client ID is missing. Please enter your Client ID in Settings.');
+    }
+
+    // Try silent GIS flow if GIS script is loaded
+    if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+      try {
+        const token = await new Promise((resolve, reject) => {
+          const client = window.google.accounts.oauth2.initTokenClient({
+            client_id: this.clientId,
+            scope: DRIVE_SCOPES,
+            hint: loginHint || undefined,
+            prompt: '',
+            callback: (response) => {
+              if (response.error) {
+                reject(new Error(response.error_description || response.error));
+                return;
+              }
+              this.token = response.access_token;
+              localStorage.setItem('mindflow_gdrive_token', this.token);
+              sessionStorage.setItem('mindflow_gdrive_token', this.token);
+              this.fetchUserProfile().catch(() => {});
+              resolve(this.token);
+            }
+          });
+          client.requestAccessToken({ prompt: '' });
+        });
+        if (token) return token;
+      } catch (silentErr) {
+        console.warn('Silent GIS token acquisition failed, falling back to interactive auth:', silentErr);
+      }
+    }
+
+    // Interactive fallback
+    await this.authorize();
+    return this.token;
+  }
+
+  /**
+   * Build headers for Google Drive API requests, setting X-Goog-Drive-Resource-Keys if provided.
+   * @param {string} [fileId] Drive file ID
+   * @param {string} [resourceKey] Drive resource key
+   * @param {Record<string, string>} [extraHeaders] Extra headers to include
+   * @returns {Record<string, string>}
+   */
+  _headers(fileId, resourceKey, extraHeaders = {}) {
+    const headers = {
+      Authorization: `Bearer ${this.token}`,
+      ...extraHeaders
+    };
+    if (fileId && resourceKey) {
+      const keyHeader = resourceKey.includes('/') ? resourceKey : `${fileId}/${resourceKey}`;
+      headers['X-Goog-Drive-Resource-Keys'] = keyHeader;
+    }
+    return headers;
+  }
+
+  /**
+   * Get file metadata from Google Drive
+   * @param {string} fileId 
+   * @param {string} [resourceKey] 
+   * @returns {Promise<Object>}
+   */
+  async getFileMeta(fileId, resourceKey) {
+    if (!this.isConnected()) throw new Error('Not connected to Google Drive');
+
+    const headers = this._headers(fileId, resourceKey);
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,parents,modifiedTime`, {
+      headers
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Failed to fetch file metadata: ${res.statusText}`);
+    }
+
+    return await res.json();
+  }
+
+  /**
+   * Download file content as text from Google Drive.
+   * Automatically detects gzip compression via magic bytes 0x1f 0x8b and decompresses with DecompressionStream.
+   * @param {string} fileId 
+   * @param {string} [resourceKey] 
+   * @returns {Promise<string>} Plain text content
+   */
+  async downloadFileText(fileId, resourceKey) {
+    if (!this.isConnected()) throw new Error('Not connected to Google Drive');
+
+    const headers = this._headers(fileId, resourceKey);
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, {
+      headers
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Failed to download file from Google Drive: ${res.statusText}`);
+    }
+
+    const buffer = await res.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+
+    // Check gzip magic bytes: 0x1F, 0x8B
+    if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
+      if (typeof DecompressionStream !== 'undefined') {
+        const stream = new Response(buffer).body.pipeThrough(new DecompressionStream('gzip'));
+        return await new Response(stream).text();
+      }
+    }
+
+    const decoder = new TextDecoder('utf-8');
+    return decoder.decode(buffer);
+  }
+
+  /**
+   * Create a new .mindflow file inside a specific Google Drive folder.
+   * RFC 2046 multipart upload with parents: [folderId].
+   * @param {string} filename 
+   * @param {string|Object} contentString 
+   * @param {string} [folderId] 
+   * @returns {Promise<Object>}
+   */
+  async createFileInFolder(filename, contentString, folderId) {
+    if (!this.isConnected()) throw new Error('Not connected to Google Drive');
+
+    let targetName = filename;
+    if (!targetName.endsWith('.mindflow') && !targetName.endsWith('.json')) {
+      targetName = `${targetName}.mindflow`;
+    }
+
+    const fileMeta = {
+      name: targetName,
+      mimeType: MINDFLOW_MIME,
+      parents: folderId ? [folderId] : undefined
+    };
+
+    const content = typeof contentString === 'string' ? contentString : JSON.stringify(contentString);
+
+    const boundary = 'foo_bar_baz_mindflow';
+    const delimiter = "\r\n--" + boundary + "\r\n";
+    const close_delim = "\r\n--" + boundary + "--";
+
+    const body =
+      delimiter +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify(fileMeta) +
+      delimiter +
+      'Content-Type: application/json\r\n\r\n' +
+      content +
+      close_delim;
+
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`
+      },
+      body: body
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || 'Failed to create file in folder on Google Drive');
+    }
+    return await res.json();
   }
 
   /**
@@ -147,7 +328,7 @@ export class GDrive {
         this.notify();
         return this.user;
       }
-      
+
       // Fallback: Try Drive API about endpoint (works with drive.file scope alone)
       const driveRes = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
         headers: { Authorization: `Bearer ${this.token}` }
@@ -191,7 +372,7 @@ export class GDrive {
 
     const fileMeta = {
       name: targetName,
-      mimeType: 'application/json'
+      mimeType: MINDFLOW_MIME
     };
 
     const content = typeof contentString === 'string' ? contentString : JSON.stringify(contentString);
@@ -207,7 +388,7 @@ export class GDrive {
         body: content
       });
       if (!res.ok) {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         throw new Error(err.error?.message || 'Failed to update .mindflow file on Google Drive');
       }
       return await res.json();
@@ -236,7 +417,7 @@ export class GDrive {
       });
 
       if (!res.ok) {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         throw new Error(err.error?.message || 'Failed to save .mindflow file to Google Drive');
       }
       return await res.json();
@@ -249,13 +430,13 @@ export class GDrive {
   async listFiles() {
     if (!this.isConnected()) throw new Error('Not connected to Google Drive');
 
-    const q = encodeURIComponent("(name contains '.mindflow' or name contains '.json' or mimeType = 'application/json') and trashed = false");
+    const q = encodeURIComponent(`(name contains '.mindflow' or name contains '.json' or mimeType = '${MINDFLOW_MIME}' or mimeType = 'application/json') and trashed = false`);
     const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,size)&orderBy=modifiedTime desc`, {
       headers: { Authorization: `Bearer ${this.token}` }
     });
 
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
       throw new Error(err.error?.message || 'Failed to list Google Drive files');
     }
 

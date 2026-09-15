@@ -18,6 +18,7 @@ import { Theme } from './theme.js';
 import { I18n } from './i18n.js';
 import { AI } from './ai.js';
 import { GDrive } from './gdrive.js';
+import { parseDriveState, clearDriveState } from './drive_state.js';
 import { MathEditor } from './math_editor.js';
 import {
   attachSmartEditor,
@@ -50,6 +51,8 @@ class App {
 
     // State
     this.currentMapId = null;
+    this.currentMapDriveId = null;
+    this.pendingDriveFolderId = null;
     this.currentMapName = 'Untitled Map';
     this.clipboard = null;
     this.isEditing = false;
@@ -73,7 +76,7 @@ class App {
   /**
    * Initialize the application
    */
-  init() {
+  async init() {
     // Initialize theme & i18n & gdrive
     this.theme.init();
     this.i18n.init();
@@ -196,8 +199,11 @@ class App {
       }
     });
 
-    // Load or create map
-    this.loadInitialMap();
+    // Load or create map (handling Google Drive UI entry if triggered)
+    const handledDrive = await this.handleDriveEntry();
+    if (!handledDrive) {
+      this.loadInitialMap();
+    }
 
     // Update language label
     this.updateLangLabel();
@@ -209,6 +215,98 @@ class App {
   }
 
   // ==================== MAP LOADING ====================
+
+  /**
+   * Handle incoming Google Drive UI Integration actions ("open" or "create" via ?state=)
+   * @returns {Promise<boolean>} true if Drive action was handled, false otherwise
+   */
+  async handleDriveEntry() {
+    const driveState = parseDriveState();
+    if (!driveState || !driveState.action) {
+      return false;
+    }
+
+    try {
+      if (driveState.action === 'open') {
+        const fileId = driveState.ids && driveState.ids.length > 0 ? driveState.ids[0] : null;
+        if (!fileId) {
+          console.warn('Google Drive open action missing file ID in state:', driveState);
+          clearDriveState();
+          return false;
+        }
+
+        const resourceKey = driveState.resourceKeys ? driveState.resourceKeys[fileId] : undefined;
+
+        showToast(this.i18n.t('gdrive.loading') || 'Đang mở sơ đồ từ Google Drive...', 'info', 4000);
+
+        // Ensure OAuth token (silent first with userId hint)
+        if (this.gdrive.hasClientId()) {
+          try {
+            await this.gdrive.ensureToken(driveState.userId || '');
+          } catch (authErr) {
+            console.warn('Silent Google Drive auth did not complete:', authErr);
+          }
+        }
+
+        if (!this.gdrive.isConnected()) {
+          // Not connected yet - show GDrive modal to let user connect or authorize
+          showToast('Vui lòng kết nối Google Drive để mở tệp', 'error', 4000);
+          this.showGDriveModal();
+          clearDriveState();
+          return false;
+        }
+
+        // Download file content (auto decompresses gzip if needed)
+        const fileText = await this.gdrive.downloadFileText(fileId, resourceKey);
+
+        // Fetch file metadata for proper map name if possible
+        let fileName = null;
+        try {
+          const meta = await this.gdrive.getFileMeta(fileId, resourceKey);
+          if (meta && meta.name) {
+            fileName = meta.name.replace(/\.(mindflow|json)$/i, '');
+          }
+        } catch (metaErr) {
+          console.warn('Could not fetch file meta, fallback to content name:', metaErr);
+        }
+
+        // Parse and apply mindmap
+        const result = await this.importer.importJSONAsync(fileText);
+        if (fileName) {
+          result.name = fileName;
+        }
+
+        await this.applyImportedResult(result);
+        this.currentMapDriveId = fileId;
+        this.pendingDriveFolderId = null;
+
+        clearDriveState();
+        return true;
+      }
+
+      if (driveState.action === 'create') {
+        this.createNewMap();
+        this.currentMapDriveId = null;
+        this.pendingDriveFolderId = driveState.folderId || null;
+
+        if (this.gdrive.hasClientId() && driveState.userId) {
+          this.gdrive.ensureToken(driveState.userId).catch(() => {});
+        }
+
+        clearDriveState();
+        showToast('Sơ đồ mới sẵn sàng lưu vào Google Drive!', 'info', 3000);
+        return true;
+      }
+
+      clearDriveState();
+      return false;
+    } catch (err) {
+      console.error('Failed to handle Google Drive entry:', err);
+      showToast('Lỗi khi mở từ Google Drive: ' + (err.message || err), 'error', 4000);
+      clearDriveState();
+      return false;
+    }
+  }
 
   loadInitialMap() {
     const lastMapId = this.storage.getPreference('lastMapId', null);
@@ -2524,7 +2622,13 @@ class App {
         tree: this.mindmap.root
       };
 
-      const result = await this.gdrive.saveFile(name, JSON.stringify(treeData, null, 2), this.currentMapDriveId || null);
+      let result;
+      if (!this.currentMapDriveId && this.pendingDriveFolderId) {
+        result = await this.gdrive.createFileInFolder(name, JSON.stringify(treeData, null, 2), this.pendingDriveFolderId);
+        this.pendingDriveFolderId = null;
+      } else {
+        result = await this.gdrive.saveFile(name, JSON.stringify(treeData, null, 2), this.currentMapDriveId || null);
+      }
       if (result && result.id) {
         this.currentMapDriveId = result.id;
       }
