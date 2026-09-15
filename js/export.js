@@ -1,13 +1,324 @@
 /**
  * Exporter class to handle exporting mindmaps to various formats.
  */
+/**
+ * Word-wrap text to fit within maxWidth using 2D canvas context.
+ * @param {CanvasRenderingContext2D} ctx 
+ * @param {string} text 
+ * @param {number} maxWidth 
+ * @returns {string[]} Lines of wrapped text
+ */
+function wrapTextLines(ctx, text, maxWidth) {
+  const paragraphs = String(text || '').split(/\r?\n/);
+  const result = [];
+
+  for (const para of paragraphs) {
+    if (!para) {
+      result.push('');
+      continue;
+    }
+
+    const words = para.split(' ');
+    let currentLine = '';
+
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const metrics = ctx.measureText(testLine);
+
+      if (metrics.width > maxWidth && currentLine) {
+        result.push(currentLine);
+        currentLine = word;
+      } else if (metrics.width > maxWidth && !currentLine) {
+        // Single long word exceeds maxWidth: break by character
+        let sub = '';
+        for (const ch of word) {
+          if (ctx.measureText(sub + ch).width > maxWidth && sub) {
+            result.push(sub);
+            sub = ch;
+          } else {
+            sub += ch;
+          }
+        }
+        currentLine = sub;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) {
+      result.push(currentLine);
+    }
+  }
+
+  return result.length > 0 ? result : [''];
+}
+
+/**
+ * Render the mindmap DOM and SVG onto an offscreen 2D HTMLCanvasElement.
+ * @param {Object} options
+ * @param {HTMLElement} options.canvasEl - Container of .mindmap-node elements
+ * @param {HTMLElement} options.svgEl - Container of .connector-path elements
+ * @param {Object} [options.bounds] - { minX, minY, maxX, maxY }
+ * @param {string} [options.background] - Background color
+ * @param {number} [options.maxDimension=4096] - Maximum width/height allowed
+ * @returns {Promise<HTMLCanvasElement>}
+ */
+export async function renderMapToCanvas({ canvasEl, svgEl, bounds = null, background = null, maxDimension = 4096 }) {
+  if (!canvasEl) {
+    throw new Error('renderMapToCanvas: canvasEl is required');
+  }
+
+  const isDark = typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark';
+
+  // Fallback bounding box if bounds not provided
+  let minX = bounds ? bounds.minX : -400;
+  let minY = bounds ? bounds.minY : -300;
+  let maxX = bounds ? bounds.maxX : 400;
+  let maxY = bounds ? bounds.maxY : 300;
+
+  // Auto-calculate bounds from nodes if bounds not supplied or invalid
+  const nodeEls = canvasEl.querySelectorAll('.mindmap-node');
+  if ((!bounds || minX >= maxX || minY >= maxY) && nodeEls.length > 0) {
+    minX = Infinity;
+    minY = Infinity;
+    maxX = -Infinity;
+    maxY = -Infinity;
+    for (const el of nodeEls) {
+      const left = parseFloat(el.style.left) || 0;
+      const top = parseFloat(el.style.top) || 0;
+      const w = el.offsetWidth || 140;
+      const h = el.offsetHeight || 44;
+      minX = Math.min(minX, left);
+      minY = Math.min(minY, top);
+      maxX = Math.max(maxX, left + w);
+      maxY = Math.max(maxY, top + h);
+    }
+  }
+  if (!isFinite(minX)) minX = -400;
+  if (!isFinite(minY)) minY = -300;
+  if (!isFinite(maxX)) maxX = 400;
+  if (!isFinite(maxY)) maxY = 300;
+
+  const padding = 80;
+  const rawWidth = Math.max(800, maxX - minX + padding * 2);
+  const rawHeight = Math.max(600, maxY - minY + padding * 2);
+
+  // Apply maxDimension scaling
+  let scale = 1.0;
+  const maxDim = Math.max(rawWidth, rawHeight);
+  if (maxDimension && maxDim > maxDimension) {
+    scale = maxDimension / maxDim;
+  }
+
+  const canvasWidth = Math.max(100, Math.round(rawWidth * scale));
+  const canvasHeight = Math.max(100, Math.round(rawHeight * scale));
+
+  const offscreen = document.createElement('canvas');
+  offscreen.width = canvasWidth;
+  offscreen.height = canvasHeight;
+  const ctx = offscreen.getContext('2d');
+
+  // 1. Draw Background
+  const bgColor = background || (isDark ? '#0F0F23' : '#F8F9FC');
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  ctx.save();
+  ctx.scale(scale, scale);
+
+  // Coordinate shift helper
+  const toCanvasX = (x) => x - minX + padding;
+  const toCanvasY = (y) => y - minY + padding;
+
+  // 2. Draw SVG Connectors
+  if (svgEl) {
+    const paths = svgEl.querySelectorAll('.connector-path');
+    paths.forEach(p => {
+      const d = p.getAttribute('d');
+      if (d) {
+        ctx.save();
+        const strokeColor = p.getAttribute('stroke') || (isDark ? '#2D2D5E' : '#CBD5E1');
+        const strokeWidth = parseFloat(p.getAttribute('stroke-width')) || 2;
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = strokeWidth;
+        ctx.lineCap = 'round';
+
+        ctx.translate(-minX + padding, -minY + padding);
+        try {
+          const path2d = new Path2D(d);
+          ctx.stroke(path2d);
+        } catch (e) {
+          // Ignore SVG path parse error
+        }
+        ctx.restore();
+      }
+    });
+  }
+
+  // 3. Draw DOM Nodes
+  for (const el of nodeEls) {
+    const rect = el.getBoundingClientRect();
+    const left = parseFloat(el.style.left) || 0;
+    const top = parseFloat(el.style.top) || 0;
+    const width = el.offsetWidth || rect.width || 120;
+    const height = el.offsetHeight || rect.height || 40;
+
+    const x = toCanvasX(left);
+    const y = toCanvasY(top);
+    const isRoot = el.classList.contains('root-node');
+
+    ctx.save();
+
+    // Node Box Shadow / Glow
+    ctx.shadowColor = isDark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.1)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 2;
+
+    // Node Background Fill
+    if (isRoot) {
+      const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
+      gradient.addColorStop(0, '#6C5CE7');
+      gradient.addColorStop(1, '#A855F7');
+      ctx.fillStyle = gradient;
+    } else if (el.style.backgroundColor && el.style.backgroundColor !== 'transparent') {
+      ctx.fillStyle = el.style.backgroundColor;
+    } else {
+      ctx.fillStyle = isDark ? '#1E1E3F' : '#FFFFFF';
+    }
+
+    // Draw Rounded Rect Box
+    const radius = 12;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(x, y, width, height, radius);
+    } else {
+      ctx.rect(x, y, width, height);
+    }
+    ctx.fill();
+
+    // Node Border
+    ctx.shadowColor = 'transparent';
+    if (!isRoot) {
+      ctx.strokeStyle = isDark ? '#2D2D5E' : '#E2E8F0';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Left Color Accent Border
+      const borderLeft = el.style.borderLeftColor;
+      if (borderLeft && borderLeft !== 'transparent') {
+        ctx.strokeStyle = borderLeft;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(x + 2, y + radius);
+        ctx.lineTo(x + 2, y + height - radius);
+        ctx.stroke();
+      }
+    }
+
+    // Node Images (Multiple)
+    const imgEls = el.querySelectorAll('.node-image-item, .node-image');
+    const hasImg = imgEls.length > 0;
+    let imgAreaHeight = 0;
+    if (hasImg) {
+      let currX = x + 8;
+      let currY = y + 8;
+      const count = Math.min(3, imgEls.length);
+      const imgW = (width - 16 - (count - 1) * 4) / count;
+      const imgH = Math.min(height - 40, 100);
+      imgAreaHeight = imgH + 8;
+
+      for (const imgEl of imgEls) {
+        if (imgEl.src) {
+          try {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            await new Promise((res) => {
+              img.onload = res;
+              img.onerror = res;
+              img.src = imgEl.src;
+            });
+            ctx.drawImage(img, currX, currY, imgW, imgH);
+            currX += imgW + 4;
+          } catch (e) {
+            // Draw image fail-safe
+          }
+        }
+      }
+    }
+
+    // Fix Bug 2: Top-Left Icon Badge
+    const iconBadge = el.querySelector('.node-icon-badge');
+    if (iconBadge && iconBadge.textContent && iconBadge.textContent.trim()) {
+      const badgeX = x + 2;
+      const badgeY = y + 2;
+      const badgeRadius = 11;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+      ctx.fillStyle = isDark ? '#1E1E3F' : '#FFFFFF';
+      ctx.fill();
+      ctx.strokeStyle = '#6C5CE7';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '12px Inter, "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+      ctx.fillText(iconBadge.textContent.trim(), badgeX, badgeY);
+      ctx.restore();
+    }
+
+    // Fix Bug 2: Top-Right Notes Badge
+    const notesBadge = el.querySelector('.node-notes-badge');
+    if (notesBadge) {
+      const badgeX = x + width - 2;
+      const badgeY = y + 2;
+      const badgeRadius = 11;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+      ctx.fillStyle = isDark ? '#1E1E3F' : '#FFFFFF';
+      ctx.fill();
+      ctx.strokeStyle = '#6C5CE7';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '11px Inter, "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+      ctx.fillText('📝', badgeX, badgeY);
+      ctx.restore();
+    }
+
+    // Fix Bug 1: Node Text Wrapping according to node width
+    const textSpan = el.querySelector('.node-text');
+    ctx.fillStyle = isRoot ? '#FFFFFF' : (isDark ? '#E2E8F0' : '#1E293B');
+    ctx.font = isRoot ? 'bold 16px Inter, sans-serif' : '14px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    const textX = x + 14;
+    const textY = y + (hasImg ? imgAreaHeight + 10 : 12);
+    const textMaxWidth = Math.max(40, width - 28);
+
+    const rawContent = textSpan ? (textSpan.innerText || textSpan.textContent || '') : '';
+    const wrappedLines = wrapTextLines(ctx, rawContent, textMaxWidth);
+
+    const lineHeight = isRoot ? 22 : 18;
+    wrappedLines.forEach((line, idx) => {
+      ctx.fillText(line, textX, textY + idx * lineHeight);
+    });
+
+    ctx.restore();
+  }
+
+  ctx.restore();
+  return offscreen;
+}
+
 export class Exporter {
-  /**
-   * Export to PNG image.
-   * @param {HTMLElement} canvasElement - The canvas transform container.
-   * @param {HTMLElement} svgElement - The SVG element containing connectors.
-   * @param {string} filename - Output filename.
-   */
   /**
    * Export to PNG image using native 2D Canvas rendering
    * @param {HTMLElement} canvasElement - The canvas transform container.
@@ -19,164 +330,14 @@ export class Exporter {
    */
   async exportPNG(canvasElement, svgElement, filename = 'mindmap.png', rootNode = null, layoutData = [], bounds = null) {
     try {
-      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-
-      // Fallback bounding box if bounds not provided
-      const minX = bounds ? bounds.minX : -400;
-      const minY = bounds ? bounds.minY : -300;
-      const maxX = bounds ? bounds.maxX : 400;
-      const maxY = bounds ? bounds.maxY : 300;
-
-      const padding = 80;
-      const mapWidth = maxX - minX + padding * 2;
-      const mapHeight = maxY - minY + padding * 2;
-
-      const offscreen = document.createElement('canvas');
-      offscreen.width = Math.max(800, mapWidth);
-      offscreen.height = Math.max(600, mapHeight);
-      const ctx = offscreen.getContext('2d');
-
-      // 1. Draw Background
-      ctx.fillStyle = isDark ? '#0F0F23' : '#F8F9FC';
-      ctx.fillRect(0, 0, offscreen.width, offscreen.height);
-
-      // Coordinate shift helper
-      const toCanvasX = (x) => x - minX + padding;
-      const toCanvasY = (y) => y - minY + padding;
-
-      // 2. Draw SVG Connectors
-      const paths = svgElement.querySelectorAll('.connector-path');
-      paths.forEach(p => {
-        const d = p.getAttribute('d');
-        if (d) {
-          ctx.save();
-          ctx.strokeStyle = isDark ? '#2D2D5E' : '#CBD5E1';
-          ctx.lineWidth = 2;
-          ctx.lineCap = 'round';
-
-          // Convert SVG path commands to Canvas 2D commands
-          const path2d = new Path2D(d);
-          ctx.save();
-          ctx.translate(-minX + padding, -minY + padding);
-          ctx.stroke(path2d);
-          ctx.restore();
-        }
+      const isDark = typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark';
+      const offscreen = await renderMapToCanvas({
+        canvasEl: canvasElement,
+        svgEl: svgElement,
+        bounds,
+        background: isDark ? '#0F0F23' : '#F8F9FC',
+        maxDimension: 4096
       });
-
-      // 3. Draw DOM Nodes
-      const nodeEls = canvasElement.querySelectorAll('.mindmap-node');
-      const loadedImages = [];
-
-      for (const el of nodeEls) {
-        const rect = el.getBoundingClientRect();
-        const left = parseFloat(el.style.left) || 0;
-        const top = parseFloat(el.style.top) || 0;
-        const width = el.offsetWidth || rect.width || 120;
-        const height = el.offsetHeight || rect.height || 40;
-
-        const x = toCanvasX(left);
-        const y = toCanvasY(top);
-        const isRoot = el.classList.contains('root-node');
-
-        ctx.save();
-
-        // Node Box Shadow / Glow
-        ctx.shadowColor = isDark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.1)';
-        ctx.shadowBlur = 8;
-        ctx.shadowOffsetY = 2;
-
-        // Node Background Fill
-        if (isRoot) {
-          const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
-          gradient.addColorStop(0, '#6C5CE7');
-          gradient.addColorStop(1, '#A855F7');
-          ctx.fillStyle = gradient;
-        } else {
-          ctx.fillStyle = isDark ? '#1E1E3F' : '#FFFFFF';
-        }
-
-        // Draw Rounded Rect Box
-        const radius = 12;
-        ctx.beginPath();
-        ctx.roundRect ? ctx.roundRect(x, y, width, height, radius) : ctx.rect(x, y, width, height);
-        ctx.fill();
-
-        // Node Border
-        ctx.shadowColor = 'transparent';
-        if (!isRoot) {
-          ctx.strokeStyle = isDark ? '#2D2D5E' : '#E2E8F0';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-
-          // Left Color Accent Border
-          const borderLeft = el.style.borderLeftColor;
-          if (borderLeft) {
-            ctx.strokeStyle = borderLeft;
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(x + 2, y + radius);
-            ctx.lineTo(x + 2, y + height - radius);
-            ctx.stroke();
-          }
-        }
-
-        // Node Images (Multiple)
-        const imgEls = el.querySelectorAll('.node-image-item, .node-image');
-        let hasImg = imgEls.length > 0;
-        if (hasImg) {
-          let currX = x + 8;
-          let currY = y + 8;
-          for (const imgEl of imgEls) {
-            if (imgEl.src) {
-              try {
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                await new Promise((res) => {
-                  img.onload = res;
-                  img.onerror = res;
-                  img.src = imgEl.src;
-                });
-                const imgW = (width - 20) / Math.min(2, imgEls.length);
-                const imgH = Math.min(height - 40, 100);
-                ctx.drawImage(img, currX, currY, imgW, imgH);
-                currX += imgW + 4;
-              } catch (e) {
-                // Ignore
-              }
-            }
-          }
-        }
-
-        // Top-Left Icon Badge
-        const iconBadge = el.querySelector('.node-icon-badge');
-        if (iconBadge && iconBadge.textContent) {
-          ctx.font = '16px Inter, sans-serif';
-          ctx.fillText(iconBadge.textContent, x - 6, y - 8);
-        }
-
-        // Top-Right Notes Badge
-        const notesBadge = el.querySelector('.node-notes-badge');
-        if (notesBadge && notesBadge.textContent) {
-          ctx.font = '12px Inter, sans-serif';
-          ctx.fillText(notesBadge.textContent, x + width - 12, y - 8);
-        }
-
-        // Node Text
-        const textSpan = el.querySelector('.node-text');
-        ctx.fillStyle = isRoot ? '#FFFFFF' : (isDark ? '#E2E8F0' : '#1E293B');
-        ctx.font = isRoot ? 'bold 16px Inter, sans-serif' : '14px Inter, sans-serif';
-        ctx.textBaseline = 'top';
-
-        let textX = x + 14;
-        let textY = y + (hasImg ? 115 : 12);
-
-        const lines = (textSpan ? textSpan.innerText || textSpan.textContent : '').split('\n');
-        lines.forEach((line, idx) => {
-          ctx.fillText(line, textX, textY + idx * 18);
-        });
-
-        ctx.restore();
-      }
 
       // Output PNG Blob
       offscreen.toBlob((pngBlob) => {

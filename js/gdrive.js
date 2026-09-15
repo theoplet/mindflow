@@ -241,55 +241,15 @@ export class GDrive {
 
   /**
    * Create a new .mindflow file inside a specific Google Drive folder.
-   * RFC 2046 multipart upload with parents: [folderId].
+   * Delegates to saveFile with folderId option.
    * @param {string} filename 
    * @param {string|Object} contentString 
    * @param {string} [folderId] 
+   * @param {Object} [opts={}]
    * @returns {Promise<Object>}
    */
-  async createFileInFolder(filename, contentString, folderId) {
-    if (!this.isConnected()) throw new Error('Not connected to Google Drive');
-
-    let targetName = filename;
-    if (!targetName.endsWith('.mindflow') && !targetName.endsWith('.json')) {
-      targetName = `${targetName}.mindflow`;
-    }
-
-    const fileMeta = {
-      name: targetName,
-      mimeType: MINDFLOW_MIME,
-      parents: folderId ? [folderId] : undefined
-    };
-
-    const content = typeof contentString === 'string' ? contentString : JSON.stringify(contentString);
-
-    const boundary = 'foo_bar_baz_mindflow';
-    const delimiter = "\r\n--" + boundary + "\r\n";
-    const close_delim = "\r\n--" + boundary + "--";
-
-    const body =
-      delimiter +
-      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-      JSON.stringify(fileMeta) +
-      delimiter +
-      'Content-Type: application/json\r\n\r\n' +
-      content +
-      close_delim;
-
-    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        'Content-Type': `multipart/related; boundary=${boundary}`
-      },
-      body: body
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || 'Failed to create file in folder on Google Drive');
-    }
-    return await res.json();
+  async createFileInFolder(filename, contentString, folderId, opts = {}) {
+    return this.saveFile(filename, contentString, null, { ...opts, folderId });
   }
 
   /**
@@ -360,9 +320,21 @@ export class GDrive {
   }
 
   /**
-   * Save mindmap file with .mindflow extension to Google Drive
+   * Save or update mindmap file on Google Drive with custom thumbnail, indexable text, and metadata.
+   * ALWAYS uses uploadType=multipart for both POST and PATCH so thumbnail and indexable text
+   * travel with the file content in a single request.
+   *
+   * @param {string} filename 
+   * @param {string|Object} contentString 
+   * @param {string|null} [driveFileId=null] If specified, updates existing file via PATCH
+   * @param {Object} [opts={}]
+   * @param {string} [opts.thumbnailBase64Url] URL-safe base64 encoded thumbnail image data
+   * @param {string} [opts.thumbnailMimeType='image/png']
+   * @param {string} [opts.indexableText] Full-text searchable content
+   * @param {string} [opts.folderId] Parent folder ID (only applied when creating new file)
+   * @returns {Promise<Object>} File resource with id, name, hasThumbnail, thumbnailLink
    */
-  async saveFile(filename, contentString, driveFileId = null) {
+  async saveFile(filename, contentString, driveFileId = null, opts = {}) {
     if (!this.isConnected()) throw new Error('Not connected to Google Drive');
 
     let targetName = filename;
@@ -375,53 +347,65 @@ export class GDrive {
       mimeType: MINDFLOW_MIME
     };
 
+    // Folder destination (only when creating new file)
+    if (!driveFileId && opts?.folderId) {
+      fileMeta.parents = [opts.folderId];
+    }
+
+    // Google Drive custom content hints (thumbnail & indexable full-text)
+    const contentHints = {};
+    if (opts?.thumbnailBase64Url) {
+      contentHints.thumbnail = {
+        image: opts.thumbnailBase64Url,
+        mimeType: opts.thumbnailMimeType || 'image/png'
+      };
+    }
+    if (opts?.indexableText) {
+      contentHints.indexableText = {
+        text: opts.indexableText
+      };
+    }
+    if (Object.keys(contentHints).length > 0) {
+      fileMeta.contentHints = contentHints;
+    }
+
     const content = typeof contentString === 'string' ? contentString : JSON.stringify(contentString);
 
-    if (driveFileId) {
-      // Update existing file content
-      const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          'Content-Type': 'application/json'
-        },
-        body: content
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error?.message || 'Failed to update .mindflow file on Google Drive');
-      }
-      return await res.json();
-    } else {
-      // Multipart create file RFC 2046 compliant
-      const boundary = 'foo_bar_baz_mindflow';
-      const delimiter = "\r\n--" + boundary + "\r\n";
-      const close_delim = "\r\n--" + boundary + "--";
+    // RFC 2046 multipart body
+    const boundary = 'foo_bar_baz_mindflow';
+    const delimiter = "\r\n--" + boundary + "\r\n";
+    const close_delim = "\r\n--" + boundary + "--";
 
-      const body =
-        delimiter +
-        'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-        JSON.stringify(fileMeta) +
-        delimiter +
-        'Content-Type: application/json\r\n\r\n' +
-        content +
-        close_delim;
+    const body =
+      delimiter +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify(fileMeta) +
+      delimiter +
+      'Content-Type: application/json\r\n\r\n' +
+      content +
+      close_delim;
 
-      const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          'Content-Type': `multipart/related; boundary=${boundary}`
-        },
-        body: body
-      });
+    const url = driveFileId
+      ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(driveFileId)}?uploadType=multipart&fields=id,name,hasThumbnail,thumbnailLink`
+      : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,hasThumbnail,thumbnailLink`;
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error?.message || 'Failed to save .mindflow file to Google Drive');
-      }
-      return await res.json();
+    const method = driveFileId ? 'PATCH' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`
+      },
+      body: body
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Failed to ${driveFileId ? 'update' : 'save'} .mindflow file on Google Drive`);
     }
+
+    return await res.json();
   }
 
   /**

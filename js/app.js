@@ -19,6 +19,7 @@ import { I18n } from './i18n.js';
 import { AI } from './ai.js';
 import { GDrive } from './gdrive.js';
 import { parseDriveState, clearDriveState } from './drive_state.js';
+import { generateMapThumbnail, blobToBase64Url, buildIndexableText } from './thumbnail.js';
 import { MathEditor } from './math_editor.js';
 import {
   attachSmartEditor,
@@ -53,6 +54,7 @@ class App {
     this.currentMapId = null;
     this.currentMapDriveId = null;
     this.pendingDriveFolderId = null;
+    this.thumbnailDirty = true;
     this.currentMapName = 'Untitled Map';
     this.clipboard = null;
     this.isEditing = false;
@@ -139,6 +141,7 @@ class App {
     });
 
     this.mindmap.on('structureChanged', () => {
+      this.thumbnailDirty = true;
       this.renderMap();
       if (!this.isUndoRedoing && !this.isLoadingMap) {
         this.saveState();
@@ -154,6 +157,7 @@ class App {
     });
 
     this.mindmap.on('nodeUpdated', ({ nodeId }) => {
+      this.thumbnailDirty = true;
       this.renderMap();
       this.triggerAutoSave();
       this.updateFormattingBar(nodeId);
@@ -2613,6 +2617,29 @@ class App {
 
     showToast(this.i18n.t('gdrive.saving'), 'info', 3000);
 
+    // Generate custom thumbnail & indexable text if dirty, wrapped in separate try/catch
+    let thumbnailBase64Url = null;
+    let thumbnailMimeType = null;
+    let indexableText = '';
+
+    try {
+      indexableText = buildIndexableText(this.mindmap);
+    } catch (e) {
+      console.warn('Failed to build indexable text:', e);
+    }
+
+    if (this.thumbnailDirty) {
+      try {
+        const thumbBlob = await generateMapThumbnail(this);
+        if (thumbBlob) {
+          thumbnailBase64Url = await blobToBase64Url(thumbBlob);
+          thumbnailMimeType = thumbBlob.type || 'image/png';
+        }
+      } catch (thumbErr) {
+        console.warn('Thumbnail generation failed, continuing save without custom thumbnail:', thumbErr);
+      }
+    }
+
     try {
       const name = this.currentMapName || 'Untitled Map';
       const treeData = {
@@ -2622,17 +2649,30 @@ class App {
         tree: this.mindmap.root
       };
 
+      const saveOpts = {
+        thumbnailBase64Url,
+        thumbnailMimeType,
+        indexableText,
+        folderId: (!this.currentMapDriveId && this.pendingDriveFolderId) ? this.pendingDriveFolderId : undefined
+      };
+
       let result;
       if (!this.currentMapDriveId && this.pendingDriveFolderId) {
-        result = await this.gdrive.createFileInFolder(name, JSON.stringify(treeData, null, 2), this.pendingDriveFolderId);
+        result = await this.gdrive.createFileInFolder(name, JSON.stringify(treeData, null, 2), this.pendingDriveFolderId, saveOpts);
         this.pendingDriveFolderId = null;
       } else {
-        result = await this.gdrive.saveFile(name, JSON.stringify(treeData, null, 2), this.currentMapDriveId || null);
+        result = await this.gdrive.saveFile(name, JSON.stringify(treeData, null, 2), this.currentMapDriveId || null, saveOpts);
       }
       if (result && result.id) {
         this.currentMapDriveId = result.id;
       }
-      showToast('Đã lưu sơ đồ lên Google Drive (.mindflow)!', 'success');
+      this.thumbnailDirty = false;
+
+      if (result && result.hasThumbnail) {
+        showToast('Đã lưu sơ đồ lên Google Drive kèm ảnh xem trước!', 'success');
+      } else {
+        showToast('Đã lưu sơ đồ lên Google Drive (.mindflow)!', 'success');
+      }
     } catch (e) {
       showToast(e.message || this.i18n.t('toast.error'), 'error');
     }
