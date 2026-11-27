@@ -411,6 +411,11 @@ export class Renderer {
     }, { passive: true });
 
     element.addEventListener('touchend', (e) => {
+      if (this.dragState.isDragging) {
+        this.handleMouseUp(e);
+        lastTapTime = 0;
+        return;
+      }
       
       const now = Date.now();
       if (now - lastTapTime < 300) {
@@ -1257,23 +1262,39 @@ export class Renderer {
       this.connectorAnimFrame = null;
     }
 
-    const addDraggingClass = (nId, isRoot = false) => {
-      const el = this.nodeElements.get(nId);
-      if (el) {
-        el.classList.add('dragging');
-        if (isRoot) {
-          el.classList.add('drag-root');
-        } else {
-          el.classList.add('drag-subtree');
-        }
-      }
-      const n = this.findNodeInTree(this.currentRootNode, nId);
-      if (n && !n.collapsed && n.children) {
-        n.children.forEach(c => addDraggingClass(c.id, false));
-      }
+    const layout = new Map(this.currentLayoutData.map(info => [info.id, info]));
+    const moving = new Map();
+    const edges = [];
+    const addEdge = (fromId, toId, key) => {
+      const from = layout.get(fromId);
+      const to = layout.get(toId);
+      const path = this.connectorElements.get(key);
+      if (!from || !to || !path) return;
+      const label = this.connectorElements.get(key + '-label');
+      const rect = label?.querySelector('rect');
+      edges.push({ from, to, path, hit: this.connectorElements.get(key + '-hit'),
+        rect, text: label?.querySelector('text'), halfWidth: Number(rect?.getAttribute('width')) / 2 });
     };
-    addDraggingClass(nodeId, true);
-    
+    const visit = (node, parent, inherited) => {
+      if (!node || !layout.has(node.id)) return;
+      const moves = inherited || node.id === nodeId;
+      if (moves) {
+        const el = this.nodeElements.get(node.id);
+        if (el) {
+          moving.set(node.id, { el, info: layout.get(node.id) });
+          el.classList.add('dragging', node.id === nodeId ? 'drag-root' : 'drag-subtree');
+        }
+        if (parent) addEdge(parent.id, node.id, parent.id + '-' + node.id);
+      }
+      if (!node.collapsed) node.children?.forEach(child => visit(child, node, moves));
+    };
+    const roots = Array.isArray(this.currentRootNode) ? this.currentRootNode : [this.currentRootNode];
+    roots.forEach(root => visit(root, null, false));
+    for (const conn of this.currentConnections || []) {
+      if (moving.has(conn.fromId) || moving.has(conn.toId)) addEdge(conn.fromId, conn.toId, 'free-' + conn.id);
+    }
+    this.dragGeometry = { moving, edges };
+
     if (this.onNodeDragStart) {
       this.onNodeDragStart(nodeId);
     }
@@ -1292,18 +1313,10 @@ export class Renderer {
       this.dragState.currentDropTargetEl.classList.remove('drop-target');
       this.dragState.currentDropTargetEl = null;
     }
-    if (this.dragState.dragNodeId) {
-      const removeDraggingClass = (nId) => {
-        const el = this.nodeElements.get(nId);
-        if (el) el.classList.remove('dragging', 'drag-root', 'drag-subtree');
-        const n = this.findNodeInTree(this.currentRootNode, nId);
-        if (n && !n.collapsed && n.children) {
-          n.children.forEach(c => removeDraggingClass(c.id));
-        }
-      };
-      removeDraggingClass(this.dragState.dragNodeId);
+    if (this.dragGeometry) {
+      this.updateLiveConnectors(0, 0);
+      this.finishDragGeometry();
     }
-    this.nodeElements.forEach(el => el.classList.remove('drop-target'));
     this.dragState.dragNodeId = null;
     this.dragState.isDragging = false;
   }
@@ -1334,8 +1347,9 @@ export class Renderer {
           this.dragState.timeout = null;
         }
         this.startDrag(this.dragState.dragNodeId, e);
+      } else {
+        return;
       }
-      return;
     }
 
     // Schedule high-performance rAF drag frame to lock to display refresh rate
@@ -1361,19 +1375,14 @@ export class Renderer {
     const newY = this.dragState.initialTop + dy;
 
     // 1. Live update position of dragged DOM element & connected SVG lines + subtree
-    const draggedEl = this.nodeElements.get(this.dragState.dragNodeId);
-    if (draggedEl) {
-      draggedEl.style.left = `${newX}px`;
-      draggedEl.style.top = `${newY}px`;
-      this.updateLiveConnectors(this.dragState.dragNodeId, newX, newY);
-    }
+    this.updateLiveConnectors(dx, dy);
 
     // 2. Efficient drop target detection (ignoring dragged node & its subtree)
     let targetElement = document.elementFromPoint ? document.elementFromPoint(clientX, clientY)?.closest('.mindmap-node') : null;
     let targetId = targetElement ? targetElement.dataset.nodeId : null;
 
     // Do not allow dropping onto self or onto any of its own descendants
-    if (targetId && (targetId === this.dragState.dragNodeId || this.isDescendantOf(this.dragState.dragNodeId, targetId))) {
+    if (targetId && (targetId === this.dragState.dragNodeId || this.dragGeometry.moving.has(targetId))) {
       targetElement = null;
       targetId = null;
     }
@@ -1393,41 +1402,36 @@ export class Renderer {
     }
   }
 
-  updateLiveConnectors(nodeId, newX, newY) {
-    const layoutData = this.currentLayoutData;
-    if (!layoutData) return;
-
-    const layoutMap = new Map();
-    layoutData.forEach(info => layoutMap.set(info.id, { ...info }));
-
-    const currentInfo = layoutMap.get(nodeId);
-    if (!currentInfo) return;
-
-    const deltaX = newX - currentInfo.x;
-    const deltaY = newY - currentInfo.y;
-
-    const updateSubtreePositions = (nId) => {
-      const info = layoutMap.get(nId);
-      if (info) {
-        info.x += deltaX;
-        info.y += deltaY;
-        const el = this.nodeElements.get(nId);
-        if (el && nId !== nodeId) {
-          el.style.left = `${info.x}px`;
-          el.style.top = `${info.y}px`;
-        }
+  updateLiveConnectors(dx, dy) {
+    const { moving, edges } = this.dragGeometry;
+    const offset = dx + 'px ' + dy + 'px';
+    for (const { el } of moving.values()) el.style.translate = offset;
+    for (const edge of edges) {
+      const { from, to } = edge;
+      const moveFrom = moving.has(from.id);
+      const moveTo = moving.has(to.id);
+      const { d, midX, midY } = this.getConnectorPath(
+        from.x + (moveFrom ? dx : 0), from.y + (moveFrom ? dy : 0), from.width || 100, from.height || 40,
+        to.x + (moveTo ? dx : 0), to.y + (moveTo ? dy : 0), to.width || 100, to.height || 40);
+      edge.path.setAttribute('d', d);
+      edge.hit?.setAttribute('d', d);
+      if (edge.rect) {
+        edge.rect.setAttribute('x', midX - edge.halfWidth);
+        edge.rect.setAttribute('y', midY - 11);
+        edge.text.setAttribute('x', midX);
+        edge.text.setAttribute('y', midY + 4);
       }
-      const n = this.findNodeInTree(this.currentRootNode, nId);
-      if (n && !n.collapsed && n.children) {
-        n.children.forEach(child => updateSubtreePositions(child.id));
-      }
-    };
-
-    updateSubtreePositions(nodeId);
-
-    if (this.currentRootNode) {
-      this.renderConnectors(this.currentRootNode, Array.from(layoutMap.values()), this.currentConnections);
     }
+  }
+
+  finishDragGeometry(dx = 0, dy = 0) {
+    for (const { el, info } of this.dragGeometry.moving.values()) {
+      el.style.left = (info.x + dx) + 'px';
+      el.style.top = (info.y + dy) + 'px';
+      el.style.translate = '';
+      el.classList.remove('dragging', 'drag-root', 'drag-subtree');
+    }
+    this.dragGeometry = null;
   }
 
   handleMouseUp(e) {
@@ -1454,21 +1458,13 @@ export class Renderer {
       let targetElement = document.elementFromPoint ? document.elementFromPoint(clientX, clientY)?.closest('.mindmap-node') : null;
       let targetId = targetElement ? targetElement.dataset.nodeId : null;
 
-      if (targetId && (targetId === this.dragState.dragNodeId || this.isDescendantOf(this.dragState.dragNodeId, targetId))) {
+      if (targetId && (targetId === this.dragState.dragNodeId || this.dragGeometry.moving.has(targetId))) {
         targetElement = null;
         targetId = null;
       }
       
-      const removeDraggingClass = (nId) => {
-        const el = this.nodeElements.get(nId);
-        if (el) el.classList.remove('dragging', 'drag-root', 'drag-subtree');
-        const n = this.findNodeInTree(this.currentRootNode, nId);
-        if (n && !n.collapsed && n.children) {
-          n.children.forEach(c => removeDraggingClass(c.id));
-        }
-      };
-      removeDraggingClass(this.dragState.dragNodeId);
-      
+      this.finishDragGeometry(dx, dy);
+
       if (this.dragState.currentDropTargetEl) {
         this.dragState.currentDropTargetEl.classList.remove('drop-target');
         this.dragState.currentDropTargetEl = null;
