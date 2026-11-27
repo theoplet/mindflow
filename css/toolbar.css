@@ -5,9 +5,12 @@
 /* 1. Top toolbar */
 #toolbar {
   position: fixed;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: max(8px, env(safe-area-inset-left, 0px));
+  right: max(8px, env(safe-area-inset-right, 0px));
+  width: max-content;
+  max-width: calc(100% - max(8px, env(safe-area-inset-left, 0px)) - max(8px, env(safe-area-inset-right, 0px)));
+  margin-inline: auto;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -400,8 +403,8 @@
 /* 17. Zoom controls */
 #zoom-controls {
   position: fixed;
-  bottom: 24px;
-  left: 24px;
+  bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  left: max(16px, env(safe-area-inset-left, 0px));
   display: flex;
   align-items: center;
   gap: 4px;
@@ -419,12 +422,47 @@
   background: rgba(30, 30, 63, 0.85);
 }
 
+#zoom-controls .toolbar-btn {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  touch-action: manipulation;
+}
+
+@media (max-width: 1450px), (any-pointer: coarse) {
+  #toolbar {
+    overflow-x: auto;
+    touch-action: pan-x;
+    scrollbar-width: thin;
+  }
+
+  #toolbar > * {
+    flex-shrink: 0;
+  }
+}
+
+@media (any-pointer: coarse) {
+  #toolbar .toolbar-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  #zoom-controls {
+    top: calc(84px + env(safe-area-inset-top, 0px));
+    bottom: auto;
+  }
+
+  #toolbar .toolbar-btn[data-tooltip]::after {
+    display: none;
+  }
+}
+
 /* 18. Status bar / bottom info */
 #status-bar {
   position: fixed;
   bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
   gap: 16px;

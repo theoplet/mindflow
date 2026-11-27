@@ -377,7 +377,6 @@ export class Renderer {
     });
 
     // Touch Interaction State
-    let touchTimer = null;
     let touchStartX = 0;
     let touchStartY = 0;
     let lastTapTime = 0;
@@ -389,7 +388,7 @@ export class Renderer {
       touchStartX = touch.clientX;
       touchStartY = touch.clientY;
 
-      touchTimer = setTimeout(() => {
+      this.dragState.timeout = setTimeout(() => {
         if (this.onNodeContextMenu) {
           this.onNodeContextMenu(node.id, { clientX: touchStartX, clientY: touchStartY });
         }
@@ -406,13 +405,12 @@ export class Renderer {
     element.addEventListener('touchmove', (e) => {
       const touch = e.touches[0];
       if (Math.abs(touch.clientX - touchStartX) > 10 || Math.abs(touch.clientY - touchStartY) > 10) {
-        clearTimeout(touchTimer);
+        clearTimeout(this.dragState.timeout);
+        this.dragState.timeout = null;
       }
-      this.handleMouseMove(e);
     }, { passive: true });
 
     element.addEventListener('touchend', (e) => {
-      clearTimeout(touchTimer);
       
       const now = Date.now();
       if (now - lastTapTime < 300) {

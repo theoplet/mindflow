@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="description" content="MindFlow — A beautiful, keyboard-first mind mapping web application. Create, organize, and visualize your ideas with ease.">
   <meta name="theme-color" content="#0F0F23">
   <link rel="icon" href="data:,">
@@ -20,10 +20,10 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="css/index.css?v=85.0">
-  <link rel="stylesheet" href="css/canvas.css?v=85.0">
-  <link rel="stylesheet" href="css/toolbar.css?v=85.0">
-  <link rel="stylesheet" href="css/animations.css?v=85.0">
+  <link rel="stylesheet" href="css/index.css?v=85.1">
+  <link rel="stylesheet" href="css/canvas.css?v=85.1">
+  <link rel="stylesheet" href="css/toolbar.css?v=85.1">
+  <link rel="stylesheet" href="css/animations.css?v=85.1">
 
   <style>
     /* Additional inline styles */
@@ -438,13 +438,16 @@
 
 
   <!-- ==================== ZOOM CONTROLS ==================== -->
-  <div id="zoom-controls">
-    <button id="btn-zoom-out" class="toolbar-btn" data-tooltip="Zoom Out">
+  <div id="zoom-controls" role="group" aria-label="Zoom">
+    <button id="btn-zoom-out" aria-label="Zoom Out" class="toolbar-btn" data-tooltip="Zoom Out">
       <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </button>
     <span id="zoom-level" style="font-size: var(--text-xs); min-width: 40px; text-align: center; color: var(--color-text-secondary);">100%</span>
-    <button id="btn-zoom-in" class="toolbar-btn" data-tooltip="Zoom In">
+    <button id="btn-zoom-in" aria-label="Zoom In" class="toolbar-btn" data-tooltip="Zoom In">
       <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button id="btn-fit-zoom" class="toolbar-btn" data-tooltip="Fit to View" aria-label="Fit to View">
+      <svg viewBox="0 0 24 24"><path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4"/></svg>
     </button>
   </div>
 
@@ -1160,7 +1163,7 @@
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 
   <!-- ==================== APP SCRIPT ==================== -->
-  <script type="module" src="js/app.js?v=85.0"></script>
+  <script type="module" src="js/app.js?v=85.1"></script>
 </body>
 </html>
 

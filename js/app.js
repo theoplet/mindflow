@@ -94,6 +94,11 @@ class App {
     this.canvas.init();
 
     this.renderer = new Renderer(canvasTransform, svgConnectors);
+    this.canvas.onPinchStart = () => {
+      const wasDragging = this.renderer.dragState.isDragging;
+      this.renderer.cancelDragState();
+      if (wasDragging) this.renderMap();
+    };
     document.fonts?.addEventListener('loadingdone', () => this.renderMap());
 
     // Set up renderer callbacks
@@ -924,7 +929,7 @@ class App {
       navigateRight: () => this.navigateNode('right'),
       zoomIn: () => this.canvas.zoomIn(),
       zoomOut: () => this.canvas.zoomOut(),
-      fitToView: () => this.centerView(),
+      fitToView: () => this.canvas.fitToView(this.lastBounds),
       selectAll: () => { /* No-op for now */ },
       copyNode: () => {
         const selected = this.mindmap.getSelectedNode();
@@ -1106,7 +1111,8 @@ class App {
       this.renderMap();
       showToast(this.mindmap.smartAutoLayout ? 'Smart Auto-Layout Active' : 'Free Positioning Mode', 'info', 2000);
     });
-    $('#btn-fit-view').addEventListener('click', () => this.centerView());
+    $('#btn-fit-view').addEventListener('click', () => this.canvas.fitToView(this.lastBounds));
+    $('#btn-fit-zoom').addEventListener('click', () => this.canvas.fitToView(this.lastBounds));
     $('#btn-center-root').addEventListener('click', () => {
       this.canvas.centerOnPoint(0, 0, true);
       if (this.mindmap.root) this.mindmap.selectNode(this.mindmap.root.id);
