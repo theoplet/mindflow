@@ -808,12 +808,12 @@
 /* ==================== RIGHT-SIDE NODE EDITOR PANEL (CONTEXT BOX) ==================== */
 .right-editor-drawer {
   position: fixed;
-  top: 60px;
+  top: calc(72px + env(safe-area-inset-top, 0px));
   right: 0;
+  bottom: max(12px, env(safe-area-inset-bottom, 0px), var(--editor-keyboard-inset, 0px));
   width: 580px;
-  min-width: 380px;
+  min-width: min(380px, 95vw);
   max-width: 95vw;
-  height: calc(100vh - 60px);
   background: var(--color-surface);
   border-left: 1px solid var(--color-border);
   box-shadow: -8px 0 32px rgba(0, 0, 0, 0.4);
@@ -876,6 +876,7 @@
 }
 
 .right-editor-header {
+  flex: 0 0 auto;
   padding: 16px 20px;
   display: flex;
   align-items: center;
@@ -891,8 +892,11 @@
 }
 
 .right-editor-body {
-  flex: 1;
-  overflow-y: auto;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -900,6 +904,7 @@
 }
 
 .right-formatting-toolbar {
+  flex: 0 0 auto;
   background: rgba(30, 41, 59, 0.7);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -996,14 +1001,13 @@
 .right-editor-area-wrapper {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 200px;
+  flex: 1 0 auto;
   width: 100%;
   box-sizing: border-box;
 }
 
 .right-editor-content {
-  flex: 1;
+  flex: 1 0 auto;
   min-height: 180px;
   width: 100%;
   box-sizing: border-box;
@@ -1015,8 +1019,7 @@
   font-size: 14.5px;
   line-height: 1.65;
   outline: none;
-  overflow-x: auto !important;
-  overflow-y: auto !important;
+  overflow-x: auto;
   white-space: pre !important;
   word-break: normal !important;
   tab-size: 4;
@@ -1207,7 +1210,9 @@
 }
 
 .right-editor-footer {
-  padding: 16px 20px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  padding: 10px 16px;
   border-top: 1px solid var(--color-border);
   background: rgba(15, 23, 42, 0.8);
   display: flex;

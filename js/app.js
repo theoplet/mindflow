@@ -2801,9 +2801,14 @@ class App {
     } catch (err) {}
 
     drawer?.classList.add('open');
-    setTimeout(() => {
-      content?.focus();
-    }, 50);
+    const body = drawer?.querySelector('.right-editor-body');
+    if (body) body.scrollTop = 0;
+    if (content) content.scrollLeft = 0;
+    if (!window.matchMedia('(pointer: coarse)').matches) {
+      setTimeout(() => {
+        if (this.editingRightNodeId === node.id) content?.focus({ preventScroll: true });
+      }, 50);
+    }
   }
 
   closeRightEditorPanel() {
@@ -3158,6 +3163,18 @@ class App {
     // Horizontal Drag Resize Handle for Context Box
     const resizeHandle = $('#right-editor-resize-handle');
     const drawer = $('#right-editor-panel');
+    const viewport = window.visualViewport;
+    if (drawer && viewport) {
+      const updateKeyboardInset = () => {
+        const covered = viewport.scale === 1
+          ? Math.max(0, document.documentElement.clientHeight - viewport.height - viewport.offsetTop)
+          : 0;
+        drawer.style.setProperty('--editor-keyboard-inset', covered + 'px');
+      };
+      viewport.addEventListener('resize', updateKeyboardInset);
+      viewport.addEventListener('scroll', updateKeyboardInset);
+      updateKeyboardInset();
+    }
     let isResizingDrawer = false;
     let startX = 0;
     let startWidth = 0;
