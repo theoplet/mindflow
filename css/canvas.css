@@ -319,8 +319,9 @@
   display: block;
   text-align: left;
   outline: none;
+  min-width: 0;
   word-break: normal;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
   tab-size: 4;
   -moz-tab-size: 4;
@@ -335,7 +336,6 @@
 
 .mindmap-node.editing {
   z-index: 100 !important;
-  min-width: max-content;
 }
 
 .mindmap-node.editing .node-text {
@@ -496,9 +496,8 @@
 }
 
 .node-text .katex-rendered.katex-block,
-.katex-display {
-  display: block !important;
-  width: 100%;
+.node-text .katex-display {
+  display: block;
   text-align: center;
   margin: 6px 0;
   overflow-x: auto !important;
@@ -507,14 +506,17 @@
   user-select: text !important;
 }
 
-.mindmap-node.has-math {
-  min-width: 480px !important;
-  max-width: 1250px !important;
+/* Let a narrow node keep its width while displaying the whole formula vertically. */
+.node-text .katex-rendered {
+  max-width: 100%;
+  overflow-x: auto;
+  pointer-events: auto;
 }
 
-.mindmap-node.has-math .node-text {
-  overflow: visible !important;
-  max-width: none !important;
+.node-text .katex-rendered.katex-block {
+  max-height: none;
+  margin-inline: 0;
+  padding-right: 0;
 }
 
 /* Custom scrollbars for long math formulas & node content */

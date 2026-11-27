@@ -167,7 +167,7 @@ export class Renderer {
     if (layoutInfo.width) element.style.width = `${layoutInfo.width}px`;
     if (layoutInfo.height) {
       element.style.minHeight = `${layoutInfo.height}px`;
-      element.style.height = node.customHeight ? `${node.customHeight}px` : 'auto';
+      element.style.height = 'auto';
     }
 
     if (node.color) {
@@ -224,7 +224,7 @@ export class Renderer {
     const header = document.createElement('div');
     header.className = 'node-header';
 
-    const textSpan = document.createElement('span');
+    const textSpan = document.createElement('div');
     textSpan.className = 'node-text';
     textSpan.contentEditable = 'false';
     textSpan.innerHTML = this.formatNodeText(node.text);
@@ -304,14 +304,14 @@ export class Renderer {
       const scale = this.getCanvasScale ? this.getCanvasScale() : 1.0;
 
       const onMove = (moveEvt) => {
-        const currentX = moveEvt.clientX || (moveEvt.touches && moveEvt.touches[0].clientX);
-        const currentY = moveEvt.clientY || (moveEvt.touches && moveEvt.touches[0].clientY);
-        if (!currentX || !currentY) return;
+        const currentX = moveEvt.clientX ?? moveEvt.touches?.[0]?.clientX;
+        const currentY = moveEvt.clientY ?? moveEvt.touches?.[0]?.clientY;
+        if (currentX == null || currentY == null) return;
 
-        const newW = Math.max(120, startWidth + (currentX - startX) / scale);
-        const newH = Math.max(40, startHeight + (currentY - startY) / scale);
+        const newW = Math.max(120, Math.round(startWidth + (currentX - startX) / scale));
+        const newH = Math.max(40, Math.round(startHeight + (currentY - startY) / scale));
         element.style.width = `${newW}px`;
-        element.style.height = `${newH}px`;
+        element.style.minHeight = `${newH}px`;
         if (this.onNodeResize) this.onNodeResize(node.id, newW, newH);
       };
 
@@ -473,6 +473,24 @@ export class Renderer {
     return element;
   }
 
+  measureNode(node) {
+    const element = this.nodeElements.get(node.id);
+    const { width, height, minHeight, transition } = element.style;
+    element.style.transition = 'none';
+    element.style.minHeight = '0';
+    element.style.height = 'auto';
+    // Measure the height at the exact width that layout will use.
+    element.style.width = node.customWidth ? `${node.customWidth}px` : 'max-content';
+    const measuredWidth = Math.min(element.offsetWidth, node.customWidth ? Infinity : 720);
+    element.style.width = `\${measuredWidth}px`;
+    const measuredHeight = Math.max(element.offsetHeight, node.customHeight || 0);
+    Object.assign(element.style, { width, height, minHeight });
+    // Flush the restored geometry before transitions are re-enabled.
+    void element.offsetWidth;
+    element.style.transition = transition;
+    return { width: measuredWidth, height: measuredHeight };
+  }
+
   /**
    * Update existing node element
    */
@@ -485,7 +503,7 @@ export class Renderer {
     if (layoutInfo.width) element.style.width = `${layoutInfo.width}px`;
     if (layoutInfo.height) {
       element.style.minHeight = `${layoutInfo.height}px`;
-      element.style.height = node.customHeight ? `${node.customHeight}px` : 'auto';
+      element.style.height = 'auto';
     }
 
     const isRoot = layoutInfo.depth === 0;
@@ -1622,16 +1640,13 @@ export class Renderer {
   renderKaTeX(rawFormula, isDisplay) {
     if (!rawFormula) return '';
     
-    // Clean up HTML tags & unescape entities for valid TeX parsing
-    let formula = String(rawFormula)
-      .replace(/<br\s*\/?>/gi, '\\\\ ')
-      .replace(/<[^>]*>/g, '')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&nbsp;/g, ' ');
+    // Strip editor markup while keeping literal comparison operators in TeX.
+    const formula = String(rawFormula)
+      .replace(/<br\s*\/?>/gi, ' ')
+      .replace(/<\/?(?:span|div|p|b|strong|i|em|u|s|strike|font|ul|ol|li)(?=[\s/>])[^>]*>/gi, '')
+      .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (_, entity) => ({
+        amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", nbsp: ' '
+      })[entity]);
 
     if (!this.katexCache) this.katexCache = new Map();
     const cacheKey = `${isDisplay ? 'D' : 'I'}:${formula}`;
@@ -1649,7 +1664,7 @@ export class Renderer {
       this.katexCache.set(cacheKey, rendered);
       return rendered;
     } catch (e) {
-      return isDisplay ? `<div class="katex-rendered katex-block" style="color:red">Lỗi LaTeX: ${e.message}</div>` : `<span class="katex-rendered" style="color:red">Lỗi LaTeX</span>`;
+      return isDisplay ? `<div class="katex-rendered katex-block" style="color:red">Lỗi LaTeX</div>` : `<span class="katex-rendered" style="color:red">Lỗi LaTeX</span>`;
     }
   }
 
@@ -1657,8 +1672,8 @@ export class Renderer {
     if (!formula || typeof formula !== 'string') return false;
     const trimmed = formula.trim();
     if (!trimmed) return false;
-    // Markdown/LaTeX standard: $ formula $ with leading/trailing spaces is plain text, not inline math
-    if (formula.startsWith(' ') || formula.endsWith(' ')) return false;
+    // Avoid treating spaced currency or prose as inline math.
+    if (formula !== trimmed && !/[\\^_{}=+<>]/.test(trimmed)) return false;
     // LaTeX command or syntax chars (\, ^, _, {, })
     if (/[\\^_{}]/.test(trimmed)) return true;
     // Vietnamese or non-ascii accented language letters
@@ -1678,7 +1693,7 @@ export class Renderer {
     if (text.trim().startsWith('\\')) {
       return true;
     }
-    const mathRegex = /(?<!\\)\$([^$\n]+?)\$/g;
+    const mathRegex = /(?<!\\)\$((?:\\.|[^$\\\n])+?)(?<!\\)\$/g;
     let match;
     while ((match = mathRegex.exec(text)) !== null) {
       if (this.looksLikeInlineMath(match[1])) {
@@ -1718,7 +1733,7 @@ export class Renderer {
     }
 
     // 2. Fast regex pattern matching for block and inline KaTeX math
-    const mathRegex = /(\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$|\\\([\s\S]*?\\\)|\\begin\{([a-zA-Z*]+)\}[\s\S]*?\\end\{\2\}|(?<!\\)\$[^$\n]+?\$)/g;
+    const mathRegex = /(\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$|\\\([\s\S]*?\\\)|\\begin\{([a-zA-Z*]+)\}[\s\S]*?\\end\{\2\}|(?<!\\)\$(?:\\.|[^$\\\n])+?(?<!\\)\$)/g;
 
     let lastIdx = 0;
     let result = '';

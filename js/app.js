@@ -94,6 +94,7 @@ class App {
     this.canvas.init();
 
     this.renderer = new Renderer(canvasTransform, svgConnectors);
+    document.fonts?.addEventListener('loadingdone', () => this.renderMap());
 
     // Set up renderer callbacks
     this.renderer.onNodeClick = (nodeId) => this.handleNodeClick(nodeId);
@@ -451,56 +452,14 @@ class App {
     // Pass 2: Measure REAL DOM sizes of all nodes after browser DOM rendering & KaTeX math layout
     let dimensionsChanged = false;
 
-    this.renderer.nodeElements.forEach((el, nodeId) => {
-      const node = this.mindmap.findNode(nodeId);
-      if (node && !node.customWidth && !node.customHeight) {
-        const isRoot = node.id === this.mindmap.root?.id || this.mindmap.isRoot(node.id);
-        const imagesCount = (node.images && node.images.length) ? node.images.length : (node.image ? 1 : 0);
-        const prevW = el.style.width;
-        const prevH = el.style.height;
-        const prevMaxW = el.style.maxWidth;
-        const prevMinH = el.style.minHeight;
-
-        const textSpan = el.querySelector('.node-text');
-        const prevTextWs = textSpan ? textSpan.style.whiteSpace : '';
-        if (textSpan) {
-          textSpan.style.whiteSpace = 'pre';
-        }
-
-        el.style.width = 'auto';
-        el.style.height = 'auto';
-        el.style.minHeight = '0px';
-        el.style.maxWidth = '1500px';
-
-        let realW = Math.ceil(el.offsetWidth) + 14;
-        let realH = el.offsetHeight;
-
-        if (el.scrollHeight > el.clientHeight + 4) {
-          realH = Math.max(realH, el.scrollHeight + 8);
-        }
-
-        // Safety clamp on measured DOM size
-        const maxSafeW = 1600;
-        const maxSafeH = 1500;
-        realW = Math.min(realW, maxSafeW);
-        realH = Math.min(realH, maxSafeH);
-
-        if (textSpan) {
-          textSpan.style.whiteSpace = prevTextWs;
-        }
-
-        el.style.width = prevW;
-        el.style.height = prevH;
-        el.style.minHeight = prevMinH;
-        el.style.maxWidth = prevMaxW;
-
-        if (!node.measuredWidth || !node.measuredHeight || Math.abs(node.measuredWidth - realW) > 3 || Math.abs(node.measuredHeight - realH) > 3) {
-          node.measuredWidth = realW;
-          node.measuredHeight = realH;
-          dimensionsChanged = true;
-        }
+    for (const { node } of layoutArray) {
+      const { width, height } = this.renderer.measureNode(node);
+      if (node.measuredWidth !== width || node.measuredHeight !== height) {
+        node.measuredWidth = width;
+        node.measuredHeight = height;
+        dimensionsChanged = true;
       }
-    });
+    }
 
     // If real DOM dimensions differed from estimates, re-compute layout with exact measured dimensions!
     if (dimensionsChanged) {
@@ -3455,8 +3414,7 @@ class App {
         if (contentEl && latexFormula) {
           this.saveRightEditorLocalState();
           restoreSelection();
-          const mathBlock = `\\[ ${latexFormula} \\]`;
-          document.execCommand('insertText', false, mathBlock);
+          document.execCommand('insertText', false, latexFormula);
           this.saveRightEditorLocalState();
         }
       });
