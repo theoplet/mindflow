@@ -1295,3 +1295,17 @@
 .right-editor-drawer.typing:not(.show-type-tools) .right-editor-area-wrapper,
 .right-editor-drawer.typing:not(.show-type-tools) .right-editor-content { flex: 1 1 0; min-height: 0; }
 .right-editor-drawer.typing .right-editor-content { overflow: auto; }
+
+#canvas-palette { border: 1px solid var(--color-border); border-radius: 8px; padding: 6px; }
+[data-theme='light'] :is(#toolbar,#status-bar,#properties-panel,#zoom-controls,.right-editor-header,.right-editor-footer,.right-formatting-toolbar,.fmt-btn,.fmt-select,.right-editor-content,.math-sym-btn) {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+[data-theme='light'] .right-editor-title span { color: var(--color-text) !important; }
+[data-theme='light'] #btn-autofit-right-editor { color: #5936a0 !important; }
+[data-theme='light'] #context-menu, [data-theme='light'] #context-menu .dropdown-item {
+  background: var(--color-surface) !important; color: var(--color-text) !important;
+}
+[data-theme='light'] :is(.math-symbols-container,#math-live-preview,.fmt-btn:hover,.fmt-select option) {
+  background: var(--color-surface-hover) !important; color: var(--color-text) !important;
+}

@@ -1,4 +1,4 @@
-import { $, createElement, compressImageFile, createBezierEasing } from './utils.js';
+import { $, createElement, createBezierEasing } from './utils.js';
 import { handleSmartTab, handleSmartEnter, handleSmartSpace, handleSmartBackspace, handleSmartInput } from './smart_editor.js';
 
 export class Renderer {
@@ -352,28 +352,8 @@ export class Renderer {
       const clipboardData = e.clipboardData || window.clipboardData;
       if (!clipboardData) return;
 
-      const items = clipboardData.items;
-      if (items) {
-        let hasImage = false;
-        for (let i = 0; i < items.length; i++) {
-          if (items[i].type.indexOf('image') !== -1) {
-            e.preventDefault();
-            e.stopPropagation();
-            hasImage = true;
-            const blob = items[i].getAsFile();
-            if (blob) {
-              compressImageFile(blob, 1200).then((compressedSrc) => {
-                const currentImages = Array.isArray(node.images) ? [...node.images] : (node.image ? [node.image] : []);
-                currentImages.push({ src: compressedSrc, width: 160 });
-                if (this.onNodeImagesUpdate) {
-                  this.onNodeImagesUpdate(node.id, currentImages);
-                }
-              });
-            }
-          }
-        }
-        if (hasImage) return;
-      }
+      // Image paste is handled by the app's rich-text editor.
+      if (Array.from(clipboardData.items || []).some(item => item.type.startsWith('image/'))) return;
 
       if (textSpan.isContentEditable) {
         e.preventDefault();
@@ -1170,25 +1150,17 @@ export class Renderer {
     const childCenterX = cx + cw / 2;
     const childCenterY = cy + ch / 2;
 
-    let startX, startY, endX, endY;
-
-    if (childCenterX >= parentCenterX) {
-      startX = px + pw;
-      startY = parentCenterY;
-      endX = cx;
-      endY = childCenterY;
-    } else {
-      startX = px;
-      startY = parentCenterY;
-      endX = cx + cw;
-      endY = childCenterY;
-    }
-
-    const dx = endX - startX;
-    const controlOffset = Math.max(Math.abs(dx) * 0.5, 30);
-
-    const cp1x = childCenterX >= parentCenterX ? startX + controlOffset : startX - controlOffset;
-    const cp2x = childCenterX >= parentCenterX ? endX - controlOffset : endX + controlOffset;
+    // Follow the perimeter continuously, including when one node crosses the other.
+    const vx = childCenterX - parentCenterX;
+    const vy = childCenterY - parentCenterY;
+    const parentFactor = 1 / Math.max(Math.abs(vx) / (pw / 2), Math.abs(vy) / (ph / 2), 1);
+    const childFactor = 1 / Math.max(Math.abs(vx) / (cw / 2), Math.abs(vy) / (ch / 2), 1);
+    const startX = parentCenterX + vx * parentFactor;
+    const startY = parentCenterY + vy * parentFactor;
+    const endX = childCenterX - vx * childFactor;
+    const endY = childCenterY - vy * childFactor;
+    const cp1x = (startX + endX) / 2;
+    const cp2x = cp1x;
 
     // Cubic Bezier midpoint at t = 0.5
     const midX = 0.125 * startX + 0.375 * cp1x + 0.375 * cp2x + 0.125 * endX;
@@ -1259,14 +1231,21 @@ export class Renderer {
     const layout = new Map(this.currentLayoutData.map(info => [info.id, info]));
     const moving = new Map();
     const edges = [];
+    const internalLines = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    this.svg.append(internalLines);
     const addEdge = (fromId, toId, key) => {
       const from = layout.get(fromId);
       const to = layout.get(toId);
       const path = this.connectorElements.get(key);
       if (!from || !to || !path) return;
       const label = this.connectorElements.get(key + '-label');
+      const hit = this.connectorElements.get(key + '-hit');
+      if (moving.has(fromId) && moving.has(toId)) {
+        for (const element of [path, hit, label]) if (element) internalLines.append(element);
+        return;
+      }
       const rect = label?.querySelector('rect');
-      edges.push({ from, to, path, hit: this.connectorElements.get(key + '-hit'),
+      edges.push({ from, to, path, hit,
         rect, text: label?.querySelector('text'), halfWidth: Number(rect?.getAttribute('width')) / 2 });
     };
     const visit = (node, parent, inherited) => {
@@ -1287,7 +1266,7 @@ export class Renderer {
     for (const conn of this.currentConnections || []) {
       if (moving.has(conn.fromId) || moving.has(conn.toId)) addEdge(conn.fromId, conn.toId, 'free-' + conn.id);
     }
-    this.dragGeometry = { moving, edges };
+    this.dragGeometry = { moving, edges, internalLines };
 
     if (this.onNodeDragStart) {
       this.onNodeDragStart(nodeId);
@@ -1397,7 +1376,8 @@ export class Renderer {
   }
 
   updateLiveConnectors(dx, dy) {
-    const { moving, edges } = this.dragGeometry;
+    const { moving, edges, internalLines } = this.dragGeometry;
+    internalLines.setAttribute('transform', 'translate(' + dx + ' ' + dy + ')');
     const offset = dx + 'px ' + dy + 'px';
     for (const { el } of moving.values()) el.style.translate = offset;
     for (const edge of edges) {
@@ -1425,6 +1405,8 @@ export class Renderer {
       el.style.translate = '';
       el.classList.remove('dragging', 'drag-root', 'drag-subtree');
     }
+    const group = this.dragGeometry.internalLines;
+    group.replaceWith(...Array.from(group.children));
     this.dragGeometry = null;
   }
 

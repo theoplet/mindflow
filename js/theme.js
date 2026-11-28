@@ -11,10 +11,13 @@ export class Theme {
    * Initialize theme from saved preference or system preference.
    */
   init() {
-    this.currentTheme = 'dark';
+    this.currentTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     try {
-      localStorage.setItem('mindflow_theme', 'dark');
-    } catch (error) {}
+      const saved = localStorage.getItem('mindflow_theme');
+      if (['dark', 'light'].includes(saved)) this.currentTheme = saved;
+      const palette = localStorage.getItem('mindflow_palette');
+      if (['neutral', 'paper', 'sage'].includes(palette)) document.documentElement.dataset.palette = palette;
+    } catch {}
     this.apply();
   }
 

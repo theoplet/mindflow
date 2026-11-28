@@ -20,10 +20,10 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="css/index.css?v=85.6">
-  <link rel="stylesheet" href="css/canvas.css?v=85.6">
-  <link rel="stylesheet" href="css/toolbar.css?v=85.6">
-  <link rel="stylesheet" href="css/animations.css?v=85.6">
+  <link rel="stylesheet" href="css/index.css?v=85.7">
+  <link rel="stylesheet" href="css/canvas.css?v=85.7">
+  <link rel="stylesheet" href="css/toolbar.css?v=85.7">
+  <link rel="stylesheet" href="css/animations.css?v=85.7">
 
   <style>
     /* Additional inline styles */
@@ -416,6 +416,11 @@
       <button id="btn-theme" class="toolbar-btn" data-tooltip="Toggle Theme" data-i18n-title="toolbar.theme">
         <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
+      <select id="canvas-palette" aria-label="Màu nền sơ đồ" title="Màu nền sơ đồ">
+        <option value="neutral">Nền trung tính</option>
+        <option value="paper">Nền giấy ấm</option>
+        <option value="sage">Nền xanh xám</option>
+      </select>
       <button id="btn-lang" class="toolbar-btn" data-tooltip="Language">
         <span class="lang-indicator" id="lang-label">EN</span>
       </button>
@@ -1165,7 +1170,7 @@
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 
   <!-- ==================== APP SCRIPT ==================== -->
-  <script type="module" src="js/app.js?v=85.6"></script>
+  <script type="module" src="js/app.js?v=85.7"></script>
 </body>
 </html>
 

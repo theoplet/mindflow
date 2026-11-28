@@ -79,15 +79,14 @@
 }
 
 [data-theme='light'] {
-  /* Colors - Dark Mode Uniform */
-  --color-bg: #0F0F23;
-  --color-surface: #1E1E3F;
-  --color-surface-hover: #2A2A52;
-  --color-border: #2D2D5E;
-  --color-text: #E2E8F0;
-  --color-text-secondary: #94A3B8;
-  --color-text-muted: #64748B;
-
+  color-scheme: light;
+  --color-bg: #edf0f4;
+  --color-surface: #fafbfc;
+  --color-surface-hover: #e4e8f1;
+  --color-border: #abb4c4;
+  --color-text: #202838;
+  --color-text-secondary: #404d63;
+  --color-text-muted: #526079;
   /* Node Preset Colors */
   --node-color-purple: #9333EA;
   --node-color-blue: #3B82F6;

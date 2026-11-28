@@ -555,7 +555,7 @@
   stroke-width: 1.2px;
   rx: 5px;
   ry: 5px;
-  transition: all var(--transition-fast);
+  transition: fill var(--transition-fast), stroke var(--transition-fast);
 }
 
 .connector-label-text {
@@ -650,3 +650,10 @@
 }
 
 #nodes-container.instant-layout .mindmap-node { transition: none !important; }
+
+[data-palette='paper'] { --canvas-paper: #28251f; }
+[data-palette='sage'] { --canvas-paper: #1d2925; }
+[data-theme='light'][data-palette='paper'] { --canvas-paper: #f3eee4; }
+[data-theme='light'][data-palette='sage'] { --canvas-paper: #e5eee8; }
+#mindmap-canvas { background-color: var(--canvas-paper, var(--color-bg)); }
+.mindmap-node.dragging.drag-root, .mindmap-node.drop-target { transform: none; }
