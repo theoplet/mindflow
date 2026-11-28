@@ -2814,7 +2814,7 @@ class App {
   closeRightEditorPanel() {
     const drawer = $('#right-editor-panel');
     if (drawer) {
-      drawer.classList.remove('open');
+      drawer.classList.remove('open', 'expanded-sheet');
       if (document.activeElement && drawer.contains(document.activeElement)) {
         document.activeElement.blur();
       }
@@ -3169,7 +3169,7 @@ class App {
         const covered = viewport.scale === 1
           ? Math.max(0, document.documentElement.clientHeight - viewport.height - viewport.offsetTop)
           : 0;
-        drawer.style.setProperty('--editor-keyboard-inset', covered + 'px');
+        document.documentElement.style.setProperty('--editor-keyboard-inset', covered + 'px');
       };
       viewport.addEventListener('resize', updateKeyboardInset);
       viewport.addEventListener('scroll', updateKeyboardInset);
@@ -3251,6 +3251,10 @@ class App {
     // Quick Width Toggle Button (Standard 580px vs Wide Mode)
     $('#btn-toggle-width-right-editor')?.addEventListener('click', () => {
       if (!drawer) return;
+      if (window.getComputedStyle(drawer).getPropertyValue('--bottom-sheet').trim() === '1') {
+        drawer.classList.toggle('expanded-sheet');
+        return;
+      }
       const currentWidth = drawer.offsetWidth;
       const isWide = currentWidth >= 700;
       if (isWide) {

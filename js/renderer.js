@@ -68,6 +68,12 @@ export class Renderer {
     this.allLinesSelected = allLinesSelected;
     this.currentConnections = connections || [];
 
+    // A dense map would otherwise rewrite every connector on every animation frame.
+    const compactBudget = navigator.hardwareConcurrency <= 4 || navigator.deviceMemory <= 4;
+    const animationLimit = compactBudget ? 60 : 150;
+    const instantLayout = layoutData.length + this.currentConnections.length >= animationLimit
+      || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.nodesContainer.classList.toggle('instant-layout', instantLayout);
     const currentLayoutIds = new Set(layoutData.map(item => item.id));
 
     // 1. Remove DOM elements no longer in layout
@@ -108,7 +114,7 @@ export class Renderer {
       }
     }
 
-    if (!hasMoved) {
+    if (!hasMoved || instantLayout) {
       this.renderConnectors(rootNode, layoutData, this.currentConnections);
       this.lastRenderedPositions = new Map(layoutData.map(l => [l.id, { x: l.x, y: l.y, width: l.width, height: l.height }]));
     } else {

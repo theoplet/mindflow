@@ -663,3 +663,5 @@
   pointer-events: stroke;
   cursor: pointer;
 }
+
+#nodes-container.instant-layout .mindmap-node { transition: none !important; }
