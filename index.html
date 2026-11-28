@@ -20,10 +20,10 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="css/index.css?v=85.5">
-  <link rel="stylesheet" href="css/canvas.css?v=85.5">
-  <link rel="stylesheet" href="css/toolbar.css?v=85.5">
-  <link rel="stylesheet" href="css/animations.css?v=85.5">
+  <link rel="stylesheet" href="css/index.css?v=85.6">
+  <link rel="stylesheet" href="css/canvas.css?v=85.6">
+  <link rel="stylesheet" href="css/toolbar.css?v=85.6">
+  <link rel="stylesheet" href="css/animations.css?v=85.6">
 
   <style>
     /* Additional inline styles */
@@ -542,6 +542,7 @@
         <span style="font-weight: 700; font-size: 15px; color: #F8FAFC;">Chỉnh Sửa Node</span>
       </div>
       <div class="right-editor-header-actions" style="display: flex; align-items: center; gap: 6px;">
+        <button id="right-typing-tools" type="button" class="btn btn-secondary" aria-expanded="false" aria-controls="right-formatting-toolbar">Định dạng</button>
         <button id="btn-toggle-width-right-editor" class="toolbar-btn" title="Mở rộng / thu gọn bảng">
           <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;"><polyline points="7 8 3 12 7 16"></polyline><polyline points="17 8 21 12 17 16"></polyline><line x1="3" y1="12" x2="21" y2="12"></line></svg>
         </button>
@@ -553,7 +554,7 @@
 
     <div class="right-editor-body">
       <!-- Full MS Word Style Formatting Toolbar -->
-      <div class="right-formatting-toolbar">
+      <div id="right-formatting-toolbar" class="right-formatting-toolbar">
         <div class="fmt-row">
           <select id="right-fmt-font-family" class="fmt-select" title="Font Family">
             <option value="Inter">Inter</option>
@@ -644,6 +645,7 @@
       <!-- Rich Editor Content Editable Area -->
       <div id="right-editor-area-wrapper" class="right-editor-area-wrapper">
         <label class="editor-label">Văn bản & Nội dung Node (Hỗ trợ Paste ảnh Ctrl+V):</label>
+        <div id="right-attachment-preview" class="node-images-container" hidden></div>
         <div id="right-editor-content" class="right-editor-content" contenteditable="true" placeholder="Nhập chữ, dán ảnh (Ctrl+V) hoặc chèn công thức toán..."></div>
       </div>
 
@@ -1163,7 +1165,7 @@
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 
   <!-- ==================== APP SCRIPT ==================== -->
-  <script type="module" src="js/app.js?v=85.5"></script>
+  <script type="module" src="js/app.js?v=85.6"></script>
 </body>
 </html>
 

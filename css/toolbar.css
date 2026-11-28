@@ -1277,3 +1277,21 @@
   .right-editor-header, .right-editor-footer { padding-block: 4px; }
   .modal-content { padding: 12px; }
 }
+
+#right-typing-tools, #right-attachment-preview[hidden] { display: none; }
+/* While typing, give the editable field its own visible scrolling area. */
+.right-editor-drawer.open.typing {
+  top: max(4px, env(safe-area-inset-top));
+  bottom: max(var(--editor-keyboard-inset, 0px), env(safe-area-inset-bottom));
+  height: auto;
+}
+.right-editor-drawer.typing #right-typing-tools { display: inline-flex; }
+.right-editor-drawer.typing .right-editor-header,
+.right-editor-drawer.typing .right-editor-footer { padding-block: 4px; }
+.right-editor-drawer.typing:not(.show-type-tools) .right-formatting-toolbar,
+.right-editor-drawer.typing:not(.show-type-tools) #right-attachment-preview,
+.right-editor-drawer.typing .editor-label { display: none; }
+.right-editor-drawer.typing:not(.show-type-tools) .right-editor-body { padding: 6px; overflow: hidden; }
+.right-editor-drawer.typing:not(.show-type-tools) .right-editor-area-wrapper,
+.right-editor-drawer.typing:not(.show-type-tools) .right-editor-content { flex: 1 1 0; min-height: 0; }
+.right-editor-drawer.typing .right-editor-content { overflow: auto; }

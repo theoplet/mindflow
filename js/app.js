@@ -2760,27 +2760,6 @@ class App {
           .replace(/\n/g, '<br>');
       }
 
-      // Backward compatibility: Convert existing node.images into inline <img> tags if not already present
-      const imagesList = node.images || (node.image ? [typeof node.image === 'string' ? { src: node.image } : node.image] : []);
-      if (Array.isArray(imagesList) && imagesList.length > 0) {
-        imagesList.forEach(imgObj => {
-          const src = typeof imgObj === 'string' ? imgObj : (imgObj ? imgObj.src : null);
-          const w = imgObj && imgObj.width ? imgObj.width : 160;
-          if (src && !content.innerHTML.includes(src.substring(0, 50))) {
-            const img = document.createElement('img');
-            img.src = src;
-            img.className = 'inline-editor-image';
-            img.style.width = `${w}px`;
-            img.style.maxWidth = '100%';
-            img.style.display = 'inline-block';
-            img.style.verticalAlign = 'middle';
-            img.style.margin = '4px 0';
-            img.contentEditable = 'false';
-            content.appendChild(img);
-          }
-        });
-      }
-
       content.style.textAlign = node.textAlign || 'left';
     }
 
@@ -2815,7 +2794,8 @@ class App {
   closeRightEditorPanel() {
     const drawer = $('#right-editor-panel');
     if (drawer) {
-      drawer.classList.remove('open', 'expanded-sheet');
+      drawer.classList.remove('open', 'expanded-sheet', 'typing', 'show-type-tools');
+      $('#right-typing-tools').setAttribute('aria-expanded', 'false');
       if (document.activeElement && drawer.contains(document.activeElement)) {
         document.activeElement.blur();
       }
@@ -2956,6 +2936,22 @@ class App {
   }
 
   renderRightEditorImages() {
+    // Attachments use the same row above the text as the canvas. Keep them
+    // outside contenteditable so a text save never creates another copy.
+    const preview = $('#right-attachment-preview');
+    preview.replaceChildren();
+    preview.hidden = !this.rightEditorImages.length;
+    for (const item of this.rightEditorImages) {
+      const frame = document.createElement('div');
+      frame.className = 'node-image-wrapper';
+      frame.style.width = (Number(item.width) || 160) + 'px';
+      const image = document.createElement('img');
+      image.className = 'node-image-item';
+      image.src = typeof item === 'string' ? item : item.src;
+      frame.append(image);
+      preview.append(frame);
+    }
+
     const gallery = $('#right-images-gallery');
     if (!gallery) return;
     gallery.innerHTML = '';
@@ -3165,17 +3161,44 @@ class App {
     const resizeHandle = $('#right-editor-resize-handle');
     const drawer = $('#right-editor-panel');
     const viewport = window.visualViewport;
-    if (drawer && viewport) {
-      const updateKeyboardInset = () => {
-        const covered = viewport.scale === 1
-          ? Math.max(0, document.documentElement.clientHeight - viewport.height - viewport.offsetTop)
-          : 0;
-        document.documentElement.style.setProperty('--editor-keyboard-inset', covered + 'px');
-      };
-      viewport.addEventListener('resize', updateKeyboardInset);
-      viewport.addEventListener('scroll', updateKeyboardInset);
-      updateKeyboardInset();
-    }
+    const textField = $('#right-editor-content');
+    const toolsToggle = $('#right-typing-tools');
+    const updateTypingLayout = () => {
+      const covered = viewport && viewport.scale === 1
+        ? Math.max(0, document.documentElement.clientHeight - viewport.height - viewport.offsetTop)
+        : 0;
+      document.documentElement.style.setProperty('--editor-keyboard-inset', covered + 'px');
+      if (!drawer.classList.contains('open')) return;
+      if (document.activeElement === textField) {
+        const compact = covered > 80 || window.matchMedia('(any-pointer: coarse), (max-height: 480px)').matches;
+        drawer.classList.toggle('typing', compact);
+        if (compact) requestAnimationFrame(revealCaret);
+      }
+    };
+    const revealCaret = () => {
+      if (!drawer.classList.contains('typing') || document.activeElement !== textField) return;
+      const selection = window.getSelection();
+      if (!selection?.rangeCount || !textField.contains(selection.focusNode)) return;
+      const range = document.createRange();
+      range.setStart(selection.focusNode, selection.focusOffset);
+      range.collapse(true);
+      const line = range.getBoundingClientRect();
+      const area = textField.getBoundingClientRect();
+      if (!line.height) return;
+      if (line.bottom > area.bottom - 8) textField.scrollTop += line.bottom - area.bottom + 8;
+      else if (line.top < area.top + 8) textField.scrollTop += line.top - area.top - 8;
+    };
+    textField.addEventListener('focus', updateTypingLayout);
+    textField.addEventListener('input', () => requestAnimationFrame(revealCaret));
+    viewport?.addEventListener('resize', updateTypingLayout);
+    viewport?.addEventListener('scroll', updateTypingLayout);
+    window.addEventListener('resize', updateTypingLayout);
+    toolsToggle.addEventListener('click', () => {
+      const shown = drawer.classList.toggle('show-type-tools');
+      toolsToggle.setAttribute('aria-expanded', String(shown));
+      if (!shown) textField.focus({ preventScroll: true });
+    });
+    updateTypingLayout();
     let isResizingDrawer = false;
     let startX = 0;
     let startWidth = 0;
