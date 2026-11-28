@@ -213,7 +213,7 @@ class App {
     // Load or create map (handling Google Drive UI entry if triggered)
     const handledDrive = await this.handleDriveEntry();
     if (!handledDrive) {
-      this.loadInitialMap();
+      await this.loadInitialMap();
     }
 
     // Update language label
@@ -319,10 +319,10 @@ class App {
     }
   }
 
-  loadInitialMap() {
+  async loadInitialMap() {
     const lastMapId = this.storage.getPreference('lastMapId', null);
     if (lastMapId) {
-      const mapData = this.storage.loadMap(lastMapId);
+      const mapData = await this.storage.loadMapAsync(lastMapId);
       if (mapData && mapData.tree) {
         this.currentMapId = lastMapId;
         this.currentMapName = mapData.name || 'Untitled Map';
@@ -1981,7 +1981,8 @@ class App {
 
   // ==================== SAVE / LOAD ====================
 
-  saveCurrentMap(showToastMessage = true) {
+  async saveCurrentMap(showToastMessage = true) {
+    if (showToastMessage && this.editingRightNodeId) await this.applyRightEditorToNode();
     if (!this.mindmap) return;
     if (!this.currentMapId) {
       this.currentMapId = generateId();
@@ -2036,63 +2037,8 @@ class App {
       return;
     }
 
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.multiple = true;
-    input.onchange = async (e) => {
-      const files = Array.from(e.target.files);
-      if (!files || files.length === 0) return;
-
-      showToast(`🖼️ Đang nạp và tối ưu ${files.length} hình ảnh...`, 'info', 3000);
-      let existingImages = node.images ? [...node.images] : (node.image ? [node.image] : []);
-
-      for (const file of files) {
-        const dataUrl = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (event) => resolve(event.target.result);
-          reader.readAsDataURL(file);
-        });
-
-        const compressedUrl = await new Promise((resolve) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let w = img.width;
-            let h = img.height;
-            const maxDim = 1920;
-            if (w > maxDim || h > maxDim) {
-              if (w > h) {
-                h = Math.round((h * maxDim) / w);
-                w = maxDim;
-              } else {
-                w = Math.round((w * maxDim) / h);
-                h = maxDim;
-              }
-            }
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, w, h);
-            resolve(canvas.toDataURL('image/webp', 0.82));
-          };
-          img.onerror = () => resolve(dataUrl);
-          img.src = dataUrl;
-        });
-
-        existingImages.push({ src: compressedUrl, width: 160 });
-      }
-
-      this.mindmap.updateNode(node.id, {
-        images: existingImages,
-        customWidth: undefined,
-        customHeight: undefined
-      });
-      this.renderMap();
-      this.saveCurrentMap(true);
-      showToast(`✅ Đã chèn thành công ${files.length} hình ảnh vào Node!`, 'success', 2500);
-    };
-    input.click();
+    if (this.editingRightNodeId !== node.id) this.openRightEditorPanel(node.id);
+    $('#right-image-input').click();
   }
 
   async showOpenMapModal() {
@@ -2721,6 +2667,10 @@ class App {
     const node = nodeId ? this.mindmap.findNode(nodeId) : this.mindmap.getSelectedNode();
     if (!node) return;
 
+    this.imageSession = { pending: new Set() };
+    this.savedRightRange = null;
+    this.activeImage = null;
+    $('#image-layout').hidden = true;
     this.editingRightNodeId = node.id;
     this.mindmap.selectNode(node.id);
     this.hideAllContextBoxes();
@@ -2733,7 +2683,11 @@ class App {
       if (rawText.includes('katex-rendered')) {
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = rawText;
-        rawText = this.renderer.extractTextWithNewlines(tempDiv);
+        tempDiv.querySelectorAll('.katex-rendered').forEach(el => {
+          const tex = el.querySelector('annotation')?.textContent;
+          if (tex) el.replaceWith(document.createTextNode('\\(' + tex + '\\)'));
+        });
+        rawText = tempDiv.innerHTML;
       }
       const hasHtml = /<\/?(?:span|div|p|b|strong|i|em|u|s|strike|font|img|br|ul|ol|li)\b[^>]*>/i.test(rawText);
       if (hasHtml) {
@@ -2753,7 +2707,18 @@ class App {
     if ($('#right-fmt-font-family')) $('#right-fmt-font-family').value = node.fontFamily || 'Inter';
 
     const imagesList = node.images || (node.image ? [typeof node.image === 'string' ? { src: node.image } : node.image] : []);
-    this.rightEditorImages = deepClone(imagesList);
+    const row = document.createDocumentFragment();
+    for (const item of imagesList) {
+      const src = typeof item === 'string' ? item : item?.src;
+      if (!src) continue;
+      const img = document.createElement('img');
+      img.className = 'inline-editor-image';
+      img.src = src;
+      img.style.cssText = 'display:inline-block;vertical-align:middle;width:' + (Number(item.width) || 160) + 'px';
+      row.append(img);
+    }
+    if (row.childNodes.length) { row.append(document.createElement('br')); content.prepend(row); }
+    this.rightEditorImages = [];
     this.renderRightEditorImages();
 
     // Load or initialize persistent undo/redo history for this specific node
@@ -3087,7 +3052,14 @@ class App {
       .filter(item => item.type.startsWith('image/')).map(item => item.getAsFile()).filter(Boolean);
   }
 
-  async insertEditorImages(files, selectionRange) {
+  insertEditorImages(files, selectionRange) {
+    const session = this.imageSession;
+    const job = this.placeEditorImages(files, selectionRange, session);
+    session.pending.add(job);
+    return job.finally(() => session.pending.delete(job));
+  }
+
+  async placeEditorImages(files, selectionRange, session) {
     if (!files.length) return;
     const field = $('#right-editor-content');
     const nodeId = this.editingRightNodeId;
@@ -3097,7 +3069,7 @@ class App {
       range.collapse(false);
     }
     const sources = await Promise.all(files.map(file => compressImageFile(file, 1200)));
-    if (this.editingRightNodeId !== nodeId || !field.contains(range.commonAncestorContainer)) return;
+    if (this.imageSession !== session || this.editingRightNodeId !== nodeId || !field.contains(range.commonAncestorContainer)) return;
     const images = sources.filter(Boolean);
     if (!images.length) return;
     range.deleteContents();
@@ -3118,7 +3090,12 @@ class App {
     this.saveRightEditorLocalState();
   }
 
-  applyRightEditorToNode(autoFit = false) {
+  async applyRightEditorToNode(autoFit = false) {
+    const session = this.imageSession;
+    while (session?.pending.size) {
+      await Promise.all(session.pending);
+      if (session !== this.imageSession) return;
+    }
     if (!this.editingRightNodeId) return;
 
     const contentEl = $('#right-editor-content');
@@ -3139,7 +3116,8 @@ class App {
       fontSize: fontSize,
       fontFamily: fontFamily,
       textAlign: textAlign,
-      images: this.rightEditorImages || [],
+      images: [],
+      image: undefined,
       customWidth: undefined,
       customHeight: undefined
     };
@@ -3419,6 +3397,33 @@ class App {
       }
     };
 
+    document.addEventListener('selectionchange', saveSelection);
+    const layout = $('#image-layout');
+    contentEl.addEventListener('click', event => {
+      if (event.target.tagName !== 'IMG') return;
+      this.activeImage = event.target;
+      layout.hidden = false;
+      $('#image-width').value = parseInt(event.target.style.width) || event.target.width;
+    });
+    $('#image-width').addEventListener('change', event => {
+      if (!contentEl.contains(this.activeImage)) return;
+      this.activeImage.style.width = Math.max(24, Math.min(1600, Number(event.target.value) || 160)) + 'px';
+      this.saveRightEditorLocalState();
+    });
+    layout.addEventListener('click', event => {
+      const mode = event.target.dataset.place, img = this.activeImage;
+      if (!mode || !img || !contentEl.contains(img)) return;
+      if (mode === 'caret') {
+        const r = this.savedRightRange?.cloneRange();
+        if (!r || !contentEl.contains(r.commonAncestorContainer)) return;
+        r.collapse(false);
+        r.insertNode(img);
+      } else if (mode === 'bottom') contentEl.append(img);
+      else contentEl.prepend(img);
+      img.style.float = ['left','right'].includes(mode) ? mode : 'none';
+      img.style.display = ['top','bottom'].includes(mode) ? 'block' : 'inline-block';
+      this.saveRightEditorLocalState();
+    });
     contentEl?.addEventListener('mouseup', saveSelection);
     contentEl?.addEventListener('keyup', saveSelection);
 

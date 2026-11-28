@@ -1309,3 +1309,9 @@
 [data-theme='light'] :is(.math-symbols-container,#math-live-preview,.fmt-btn:hover,.fmt-select option) {
   background: var(--color-surface-hover) !important; color: var(--color-text) !important;
 }
+
+#image-layout:not([hidden]) { display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
+#image-layout button, #image-layout input { border:1px solid var(--color-border); border-radius:5px; padding:6px; }
+#image-width { width:5em; }
+#right-editor-content { white-space:pre-wrap !important; overflow-wrap:anywhere; }
+#right-editor-content, .node-text:has(img) { display:flow-root; }

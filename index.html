@@ -20,10 +20,10 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="css/index.css?v=85.7">
-  <link rel="stylesheet" href="css/canvas.css?v=85.7">
-  <link rel="stylesheet" href="css/toolbar.css?v=85.7">
-  <link rel="stylesheet" href="css/animations.css?v=85.7">
+  <link rel="stylesheet" href="css/index.css?v=85.8">
+  <link rel="stylesheet" href="css/canvas.css?v=85.8">
+  <link rel="stylesheet" href="css/toolbar.css?v=85.8">
+  <link rel="stylesheet" href="css/animations.css?v=85.8">
 
   <style>
     /* Additional inline styles */
@@ -651,6 +651,12 @@
       <div id="right-editor-area-wrapper" class="right-editor-area-wrapper">
         <label class="editor-label">Văn bản & Nội dung Node (Hỗ trợ Paste ảnh Ctrl+V):</label>
         <div id="right-attachment-preview" class="node-images-container" hidden></div>
+        <div id="image-layout" hidden aria-label="Bố trí ảnh">
+          <button data-place="left">Trái</button><button data-place="right">Phải</button>
+          <button data-place="top">Trên</button><button data-place="bottom">Dưới</button>
+          <button data-place="caret">Đặt tại con trỏ</button>
+          <label>Rộng (px) <input id="image-width" type="number" min="24" max="1600"></label>
+        </div>
         <div id="right-editor-content" class="right-editor-content" contenteditable="true" placeholder="Nhập chữ, dán ảnh (Ctrl+V) hoặc chèn công thức toán..."></div>
       </div>
 
@@ -1170,7 +1176,7 @@
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 
   <!-- ==================== APP SCRIPT ==================== -->
-  <script type="module" src="js/app.js?v=85.7"></script>
+  <script type="module" src="js/app.js?v=85.8"></script>
 </body>
 </html>
 

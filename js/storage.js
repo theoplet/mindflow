@@ -11,7 +11,7 @@ export class Storage {
     this.autoSaveTimeout = null;
     this.cachedIndex = null;
     this.db = null;
-    this._initDB();
+    this.ready = this._initDB();
   }
 
   async _initDB() {
@@ -50,7 +50,7 @@ export class Storage {
             el.remove();
           }
         });
-        const clean = tempDiv.textContent || tempDiv.innerText || '';
+        const clean = tempDiv.innerHTML;
         return clean.trim() || 'Topic';
       }
     }
@@ -128,6 +128,7 @@ export class Storage {
   }
 
   async loadMapAsync(id) {
+    await this.ready;
     if (this.db) {
       return new Promise((resolve) => {
         try {
