@@ -77,42 +77,34 @@ export class MathEditor {
 
   setupActionListeners() {
     $('#btn-close-math-modal')?.addEventListener('click', () => this.close());
-    const hasMathDelimiters = (str) => /^(\\+\[|\$\$|\$|\\+\(|\\begin)/.test(str.trim());
-
-    $('#btn-insert-math')?.addEventListener('click', () => {
-      let latexText = this.textarea ? this.textarea.value.trim() : '';
-      if (latexText) {
-        if (this.onInsertCallback) {
-          this.onInsertCallback(latexText);
-        } else if (this.activeNodeId) {
-          if (!hasMathDelimiters(latexText)) {
-            latexText = `\\[ ${latexText} \\]`;
-          }
-          this.app.mindmap.updateNode(this.activeNodeId, { text: latexText });
-          this.app.renderMap();
-        }
+    const insert = (append) => {
+      const latex = this.getFormula();
+      if (!latex || !this.isValid) return;
+      const value = latex.delimited ? latex.raw : '\\[' + latex.source + '\\]';
+      if (this.onInsertCallback) {
+        this.onInsertCallback(value);
+      } else if (this.activeNodeId) {
+        const node = this.app.mindmap.findNode(this.activeNodeId);
+        this.app.mindmap.updateNode(this.activeNodeId, {
+          text: append && node?.text ? node.text + '\n' + value : value
+        });
+        this.app.renderMap();
       }
       this.close();
-    });
+    };
+    $('#btn-insert-math')?.addEventListener('click', () => insert(false));
+    $('#btn-append-math')?.addEventListener('click', () => insert(true));
+  }
 
-    $('#btn-append-math')?.addEventListener('click', () => {
-      let latexText = this.textarea ? this.textarea.value.trim() : '';
-      if (latexText) {
-        if (this.onInsertCallback) {
-          this.onInsertCallback(latexText);
-        } else if (this.activeNodeId) {
-          if (!hasMathDelimiters(latexText)) {
-            latexText = `\\[ ${latexText} \\]`;
-          }
-          const node = this.app.mindmap.findNode(this.activeNodeId);
-          const currentText = node ? (node.text || '') : '';
-          const newText = currentText ? `${currentText}\n${latexText}` : latexText;
-          this.app.mindmap.updateNode(this.activeNodeId, { text: newText });
-          this.app.renderMap();
-        }
+  getFormula() {
+    const raw = this.textarea?.value.trim();
+    if (!raw) return null;
+    for (const [open, close, display] of [['\\[', '\\]', true], ['$$', '$$', true], ['\\(', '\\)', false], ['$', '$', false]]) {
+      if (raw.startsWith(open) && raw.endsWith(close) && raw.length > open.length + close.length) {
+        return { raw, source: raw.slice(open.length, -close.length).trim(), delimited: true, display };
       }
-      this.close();
-    });
+    }
+    return { raw, source: raw, delimited: false, display: true };
   }
 
   insertAtCursor(field, value) {
@@ -130,31 +122,23 @@ export class MathEditor {
 
   updatePreview() {
     if (!this.preview || !this.textarea) return;
-    const val = this.textarea.value.trim();
-
-    if (!val) {
-      this.preview.innerHTML = '<span style="color: var(--color-text-muted); font-size: 13px;">(Công thức sẽ hiển thị tại đây)</span>';
-      return;
-    }
-
-    if (window.katex) {
+    const formula = this.getFormula();
+    this.isValid = false;
+    if (!formula) {
+      this.preview.textContent = '(Công thức sẽ hiển thị tại đây)';
+    } else if (window.katex) {
       try {
-        let cleanVal = val;
-
-        // Strip delimiters if user pasted \[ ... \], $$ ... $$, \( ... \), $ ... $
-        cleanVal = cleanVal
-          .replace(/^\\\[\s*/, '').replace(/\s*\\\]$/, '')
-          .replace(/^\$\$\s*/, '').replace(/\s*\$\$$/, '')
-          .replace(/^\\\(\s*/, '').replace(/\s*\\\)$/, '')
-          .replace(/^\$\s*/, '').replace(/\s*\$$/, '');
-
-        const html = window.katex.renderToString(cleanVal, { displayMode: true, throwOnError: false });
-        this.preview.innerHTML = html;
-      } catch (err) {
-        this.preview.innerHTML = `<span style="color: #EF4444; font-size: 13px;">Lỗi cú pháp LaTeX: ${err.message}</span>`;
+        window.katex.render(formula.source, this.preview, { displayMode: formula.display, throwOnError: true, maxExpand: 1000 });
+        this.isValid = true;
+      } catch (error) {
+        this.preview.textContent = 'Lỗi cú pháp LaTeX: ' + error.message;
       }
     } else {
-      this.preview.textContent = val;
+      this.preview.textContent = 'Chưa tải được KaTeX. Hãy tải lại trang.';
+    }
+    for (const id of ['#btn-insert-math', '#btn-append-math']) {
+      const button = $(id);
+      if (button) button.disabled = !this.isValid;
     }
   }
 }

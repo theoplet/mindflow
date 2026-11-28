@@ -42,55 +42,91 @@ export class Canvas {
       if (this.isPanning) e.preventDefault();
     });
 
-    // Touch event handlers for touch pan & 2-finger pinch-to-zoom
-    let initialPinchDist = 0;
-    let initialScale = 1;
+    this.initTouch();
+  }
 
-    this.container.addEventListener('touchstart', (e) => {
-      if (e.target.closest('.mindmap-node')) return;
-
-      if (e.touches.length === 1) {
-        this.isPanning = true;
-        this.lastPanX = e.touches[0].clientX;
-        this.lastPanY = e.touches[0].clientY;
-      } else if (e.touches.length === 2) {
-        this.isPanning = false;
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        initialPinchDist = Math.hypot(dx, dy);
-        initialScale = this.scale;
-      }
-    }, { passive: true });
-
-    this.container.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 1 && this.isPanning) {
-        const dx = e.touches[0].clientX - this.lastPanX;
-        const dy = e.touches[0].clientY - this.lastPanY;
-        this.translateX += dx;
-        this.translateY += dy;
-        this.lastPanX = e.touches[0].clientX;
-        this.lastPanY = e.touches[0].clientY;
-        this.applyTransform();
-      } else if (e.touches.length === 2) {
-        e.preventDefault(); // Stop browser viewport scaling
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        const dist = Math.hypot(dx, dy);
-        if (initialPinchDist > 0) {
-          const factor = dist / initialPinchDist;
-          const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-          const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-          this.zoomAtPoint(initialScale * factor, centerX, centerY);
+  initTouch() {
+    let pinch = null;
+    let multiTouch = false;
+    const midpoint = touches => {
+      const a = touches[0], b = touches[1];
+      return {
+        x: (a.clientX + b.clientX) / 2,
+        y: (a.clientY + b.clientY) / 2,
+        distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+      };
+    };
+    const consume = e => {
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
+    };
+    const startPinch = e => {
+      multiTouch = true;
+      this.isPanning = false;
+      this.onPinchStart?.();
+      pinch = null;
+      if (e.touches.length !== 2) return;
+      const center = midpoint(e.touches);
+      if (center.distance < 1) return;
+      pinch = {
+        distance: center.distance,
+        scale: this.scale,
+        anchor: this.screenToCanvas(center.x, center.y)
+      };
+    };
+    this.touchEvents = {
+      touchstart: e => {
+        if (e.touches.length >= 2) {
+          consume(e);
+          startPinch(e);
+        } else if (!multiTouch && !e.target.closest('.mindmap-node')) {
+          this.isPanning = true;
+          this.lastPanX = e.touches[0].clientX;
+          this.lastPanY = e.touches[0].clientY;
         }
-      }
-    }, { passive: false });
-
-    this.container.addEventListener('touchend', (e) => {
-      if (e.touches.length === 0) {
+      },
+      touchmove: e => {
+        if (multiTouch || e.touches.length >= 2) {
+          consume(e);
+          if (e.touches.length !== 2) return;
+          if (!pinch) startPinch(e);
+          if (!pinch) return;
+          const center = midpoint(e.touches);
+          const rect = this.container.getBoundingClientRect();
+          this.scale = Math.max(this.minScale, Math.min(this.maxScale, pinch.scale * center.distance / pinch.distance));
+          this.translateX = center.x - rect.left - pinch.anchor.x * this.scale;
+          this.translateY = center.y - rect.top - pinch.anchor.y * this.scale;
+          this.applyTransform();
+        } else if (e.touches.length === 1 && this.isPanning) {
+          if (e.cancelable) e.preventDefault();
+          const touch = e.touches[0];
+          this.translateX += touch.clientX - this.lastPanX;
+          this.translateY += touch.clientY - this.lastPanY;
+          this.lastPanX = touch.clientX;
+          this.lastPanY = touch.clientY;
+          this.applyTransform();
+        }
+      },
+      touchend: e => {
+        if (!multiTouch) {
+          this.isPanning = false;
+          return;
+        }
+        consume(e);
+        pinch = null;
+        if (!e.touches.length) multiTouch = false;
+      },
+      touchcancel: e => {
+        if (multiTouch) consume(e);
+        else this.onPinchStart?.();
         this.isPanning = false;
-        initialPinchDist = 0;
+        multiTouch = false;
+        pinch = null;
       }
-    });
+    };
+    for (const [type, handler] of Object.entries(this.touchEvents)) {
+      this.container.addEventListener(type, handler, { capture: true, passive: false });
+    }
   }
 
   handleWheel(e) {
@@ -301,6 +337,9 @@ export class Canvas {
   }
 
   destroy() {
+    for (const [type, handler] of Object.entries(this.touchEvents ?? {})) {
+      this.container.removeEventListener(type, handler, true);
+    }
     this.container.removeEventListener('wheel', this.handleWheel);
     this.container.removeEventListener('mousedown', this.handleMouseDown);
     window.removeEventListener('mousemove', this.handleMouseMove);

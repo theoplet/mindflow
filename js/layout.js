@@ -106,9 +106,6 @@ export class Layout {
   }
 
   estimateNodeSize(node, isRoot = false) {
-    if (node.customWidth && node.customHeight) {
-      return { width: node.customWidth, height: node.customHeight };
-    }
     if (node.measuredWidth && node.measuredHeight) {
       return { width: node.measuredWidth, height: node.measuredHeight };
     }
@@ -189,7 +186,7 @@ export class Layout {
     }
 
     if (node.customWidth) width = node.customWidth;
-    if (node.customHeight) height = node.customHeight;
+    if (node.customHeight) height = Math.max(height, node.customHeight);
 
     // Absolute safety bounds against infinite runaway dimensions
     if (!node.customWidth) width = Math.min(width, 1600);

@@ -94,6 +94,12 @@ class App {
     this.canvas.init();
 
     this.renderer = new Renderer(canvasTransform, svgConnectors);
+    this.canvas.onPinchStart = () => {
+      const wasDragging = this.renderer.dragState.isDragging;
+      this.renderer.cancelDragState();
+      if (wasDragging) this.renderMap();
+    };
+    document.fonts?.addEventListener('loadingdone', () => this.renderMap());
 
     // Set up renderer callbacks
     this.renderer.onNodeClick = (nodeId) => this.handleNodeClick(nodeId);
@@ -451,56 +457,14 @@ class App {
     // Pass 2: Measure REAL DOM sizes of all nodes after browser DOM rendering & KaTeX math layout
     let dimensionsChanged = false;
 
-    this.renderer.nodeElements.forEach((el, nodeId) => {
-      const node = this.mindmap.findNode(nodeId);
-      if (node && !node.customWidth && !node.customHeight) {
-        const isRoot = node.id === this.mindmap.root?.id || this.mindmap.isRoot(node.id);
-        const imagesCount = (node.images && node.images.length) ? node.images.length : (node.image ? 1 : 0);
-        const prevW = el.style.width;
-        const prevH = el.style.height;
-        const prevMaxW = el.style.maxWidth;
-        const prevMinH = el.style.minHeight;
-
-        const textSpan = el.querySelector('.node-text');
-        const prevTextWs = textSpan ? textSpan.style.whiteSpace : '';
-        if (textSpan) {
-          textSpan.style.whiteSpace = 'pre';
-        }
-
-        el.style.width = 'auto';
-        el.style.height = 'auto';
-        el.style.minHeight = '0px';
-        el.style.maxWidth = '1500px';
-
-        let realW = Math.ceil(el.offsetWidth) + 14;
-        let realH = el.offsetHeight;
-
-        if (el.scrollHeight > el.clientHeight + 4) {
-          realH = Math.max(realH, el.scrollHeight + 8);
-        }
-
-        // Safety clamp on measured DOM size
-        const maxSafeW = 1600;
-        const maxSafeH = 1500;
-        realW = Math.min(realW, maxSafeW);
-        realH = Math.min(realH, maxSafeH);
-
-        if (textSpan) {
-          textSpan.style.whiteSpace = prevTextWs;
-        }
-
-        el.style.width = prevW;
-        el.style.height = prevH;
-        el.style.minHeight = prevMinH;
-        el.style.maxWidth = prevMaxW;
-
-        if (!node.measuredWidth || !node.measuredHeight || Math.abs(node.measuredWidth - realW) > 3 || Math.abs(node.measuredHeight - realH) > 3) {
-          node.measuredWidth = realW;
-          node.measuredHeight = realH;
-          dimensionsChanged = true;
-        }
+    for (const { node } of layoutArray) {
+      const { width, height } = this.renderer.measureNode(node);
+      if (node.measuredWidth !== width || node.measuredHeight !== height) {
+        node.measuredWidth = width;
+        node.measuredHeight = height;
+        dimensionsChanged = true;
       }
-    });
+    }
 
     // If real DOM dimensions differed from estimates, re-compute layout with exact measured dimensions!
     if (dimensionsChanged) {
@@ -965,7 +929,7 @@ class App {
       navigateRight: () => this.navigateNode('right'),
       zoomIn: () => this.canvas.zoomIn(),
       zoomOut: () => this.canvas.zoomOut(),
-      fitToView: () => this.centerView(),
+      fitToView: () => this.canvas.fitToView(this.lastBounds),
       selectAll: () => { /* No-op for now */ },
       copyNode: () => {
         const selected = this.mindmap.getSelectedNode();
@@ -1147,7 +1111,8 @@ class App {
       this.renderMap();
       showToast(this.mindmap.smartAutoLayout ? 'Smart Auto-Layout Active' : 'Free Positioning Mode', 'info', 2000);
     });
-    $('#btn-fit-view').addEventListener('click', () => this.centerView());
+    $('#btn-fit-view').addEventListener('click', () => this.canvas.fitToView(this.lastBounds));
+    $('#btn-fit-zoom').addEventListener('click', () => this.canvas.fitToView(this.lastBounds));
     $('#btn-center-root').addEventListener('click', () => {
       this.canvas.centerOnPoint(0, 0, true);
       if (this.mindmap.root) this.mindmap.selectNode(this.mindmap.root.id);
@@ -2836,9 +2801,14 @@ class App {
     } catch (err) {}
 
     drawer?.classList.add('open');
-    setTimeout(() => {
-      content?.focus();
-    }, 50);
+    const body = drawer?.querySelector('.right-editor-body');
+    if (body) body.scrollTop = 0;
+    if (content) content.scrollLeft = 0;
+    if (!window.matchMedia('(pointer: coarse)').matches) {
+      setTimeout(() => {
+        if (this.editingRightNodeId === node.id) content?.focus({ preventScroll: true });
+      }, 50);
+    }
   }
 
   closeRightEditorPanel() {
@@ -3193,6 +3163,18 @@ class App {
     // Horizontal Drag Resize Handle for Context Box
     const resizeHandle = $('#right-editor-resize-handle');
     const drawer = $('#right-editor-panel');
+    const viewport = window.visualViewport;
+    if (drawer && viewport) {
+      const updateKeyboardInset = () => {
+        const covered = viewport.scale === 1
+          ? Math.max(0, document.documentElement.clientHeight - viewport.height - viewport.offsetTop)
+          : 0;
+        drawer.style.setProperty('--editor-keyboard-inset', covered + 'px');
+      };
+      viewport.addEventListener('resize', updateKeyboardInset);
+      viewport.addEventListener('scroll', updateKeyboardInset);
+      updateKeyboardInset();
+    }
     let isResizingDrawer = false;
     let startX = 0;
     let startWidth = 0;
@@ -3455,8 +3437,7 @@ class App {
         if (contentEl && latexFormula) {
           this.saveRightEditorLocalState();
           restoreSelection();
-          const mathBlock = `\\[ ${latexFormula} \\]`;
-          document.execCommand('insertText', false, mathBlock);
+          document.execCommand('insertText', false, latexFormula);
           this.saveRightEditorLocalState();
         }
       });
