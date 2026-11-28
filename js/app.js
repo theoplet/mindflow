@@ -115,6 +115,7 @@ class App {
     this.renderer.onNodeImagesUpdate = (nodeId, imagesArray) => {
       this.mindmap.updateNode(nodeId, { images: imagesArray, customHeight: undefined, customWidth: undefined });
     };
+    this.renderer.onImageLoad = () => this.renderMap();
     this.renderer.onImageResize = (nodeId, imgIndex, width, height) => {
       const node = this.mindmap.findNode(nodeId);
       if (!node) return;
@@ -1560,7 +1561,7 @@ class App {
             const selected = this.mindmap.getSelectedNode() || this.mindmap.root;
             if (selected) {
               let imagesList = selected.images ? [...selected.images] : (selected.image ? [selected.image] : []);
-              imagesList.push({ src: b64, width: 180, height: 120 });
+              imagesList.push({ src: b64, width: 180 });
               delete selected.customWidth;
               delete selected.customHeight;
               delete selected.measuredWidth;
@@ -2058,7 +2059,7 @@ class App {
       if (!files || files.length === 0) return;
 
       showToast(`🖼️ Đang nạp và tối ưu ${files.length} hình ảnh...`, 'info', 3000);
-      let existingImages = node.images ? [...node.images] : (node.image ? [{ src: node.image, width: 160, height: 100 }] : []);
+      let existingImages = node.images ? [...node.images] : (node.image ? [node.image] : []);
 
       for (const file of files) {
         const dataUrl = await new Promise((resolve) => {
@@ -2093,7 +2094,7 @@ class App {
           img.src = dataUrl;
         });
 
-        existingImages.push({ src: compressedUrl, width: 160, height: 100 });
+        existingImages.push({ src: compressedUrl, width: 160 });
       }
 
       this.mindmap.updateNode(node.id, {
@@ -2773,7 +2774,7 @@ class App {
             img.style.maxWidth = '100%';
             img.style.display = 'inline-block';
             img.style.verticalAlign = 'middle';
-            img.style.margin = '4px 6px';
+            img.style.margin = '4px 0';
             img.contentEditable = 'false';
             content.appendChild(img);
           }
@@ -3358,7 +3359,7 @@ class App {
           img.style.maxWidth = '100%';
           img.style.display = 'inline-block';
           img.style.verticalAlign = 'middle';
-          img.style.margin = '4px 6px';
+          img.style.margin = '4px 0';
           img.contentEditable = 'false';
           contentEl.appendChild(img);
           this.saveRightEditorLocalState();
@@ -3389,7 +3390,7 @@ class App {
             img.style.maxWidth = '100%';
             img.style.display = 'inline-block';
             img.style.verticalAlign = 'middle';
-            img.style.margin = '4px 6px';
+            img.style.margin = '4px 0';
             img.contentEditable = 'false';
 
             if (sel && sel.rangeCount > 0 && contentEl.contains(sel.anchorNode)) {

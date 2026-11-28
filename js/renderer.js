@@ -364,7 +364,7 @@ export class Renderer {
             if (blob) {
               compressImageFile(blob, 1200).then((compressedSrc) => {
                 const currentImages = Array.isArray(node.images) ? [...node.images] : (node.image ? [node.image] : []);
-                currentImages.push({ src: compressedSrc, width: 160, height: 100 });
+                currentImages.push({ src: compressedSrc, width: 160 });
                 if (this.onNodeImagesUpdate) {
                   this.onNodeImagesUpdate(node.id, currentImages);
                 }
@@ -626,10 +626,17 @@ export class Renderer {
         imgContainer.className = 'node-images-container';
         element.insertBefore(imgContainer, element.querySelector('.node-header'));
       }
-      imgContainer.innerHTML = '';
-      imagesList.forEach((srcObj, idx) => {
-        imgContainer.appendChild(this.renderImageWrapper(srcObj, idx, node));
+      imagesList.forEach((item, idx) => {
+        const src = typeof item === 'string' ? item : item.src;
+        const width = Number(item.width) || 160;
+        const current = imgContainer.children[idx];
+        if (current?.firstElementChild.getAttribute('src') === src &&
+            current.dataset.width === String(width)) return;
+        const wrapper = this.renderImageWrapper(item, idx, node);
+        if (current) current.replaceWith(wrapper);
+        else imgContainer.appendChild(wrapper);
       });
+      while (imgContainer.children.length > imagesList.length) imgContainer.lastElementChild.remove();
     } else if (imgContainer) {
       imgContainer.remove();
     }
@@ -689,16 +696,19 @@ export class Renderer {
   renderImageWrapper(srcObj, idx, node) {
     const src = typeof srcObj === 'string' ? srcObj : srcObj.src;
     const w = typeof srcObj === 'object' ? srcObj.width : null;
-    const h = typeof srcObj === 'object' ? srcObj.height : null;
+    const width = Number(w) || 160;
 
     const imgWrapper = document.createElement('div');
     imgWrapper.className = 'node-image-wrapper';
 
     const img = document.createElement('img');
     img.className = 'node-image-item';
+    img.addEventListener('load', () => {
+      if (img.isConnected) this.onImageLoad?.();
+    }, { once: true });
+    imgWrapper.style.width = width + 'px';
+    imgWrapper.dataset.width = String(width);
     img.src = src;
-    img.style.width = w ? `${w}px` : '160px';
-    if (h) img.style.height = `${h}px`;
     imgWrapper.appendChild(img);
 
     // Image Resize Handle at bottom-right corner of image wrapper!
@@ -707,62 +717,40 @@ export class Renderer {
     imgResizeHandle.title = 'Kéo để phóng to / thu nhỏ hình ảnh này';
     imgWrapper.appendChild(imgResizeHandle);
 
-    const initImgResize = (clientX, clientY) => {
-      const startW = img.offsetWidth || 160;
-      const startH = img.offsetHeight || 100;
-      const startX = clientX;
-      const startY = clientY;
-      const scale = this.getCanvasScale ? this.getCanvasScale() : 1.0;
-      const aspectRatio = startW / (startH || 1);
-
-      const onMove = (moveEvt) => {
-        const currX = moveEvt.clientX || (moveEvt.touches && moveEvt.touches[0].clientX);
-        const currY = moveEvt.clientY || (moveEvt.touches && moveEvt.touches[0].clientY);
-        if (!currX || !currY) return;
-
-        const deltaX = (currX - startX) / scale;
-        const newW = Math.max(60, Math.min(800, startW + deltaX));
-        const newH = Math.max(40, Math.round(newW / aspectRatio));
-
-        img.style.width = `${newW}px`;
-        img.style.height = `${newH}px`;
+    imgResizeHandle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || !img.naturalWidth) return;
+      event.stopPropagation();
+      event.preventDefault();
+      const startWidth = img.getBoundingClientRect().width;
+      const scale = this.getCanvasScale?.() || 1;
+      const startX = event.clientX;
+      let targetWidth = startWidth / scale;
+      const onMove = (move) => {
+        if (move.pointerId !== event.pointerId) return;
+        targetWidth = Math.max(60, Math.min(800, (startWidth + move.clientX - startX) / scale));
+        imgWrapper.style.width = targetWidth + 'px';
       };
-
-      const onEnd = () => {
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onEnd);
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onEnd);
-        window.removeEventListener('touchmove', onMove);
-        window.removeEventListener('touchend', onEnd);
-
-        const finalW = img.offsetWidth;
-        const finalH = img.offsetHeight;
-        if (this.onImageResize) {
-          this.onImageResize(node.id, idx, finalW, finalH);
+      const finish = (end) => {
+        if (end.pointerId !== event.pointerId) return;
+        imgResizeHandle.removeEventListener('pointermove', onMove);
+        imgResizeHandle.removeEventListener('pointerup', finish);
+        imgResizeHandle.removeEventListener('pointercancel', finish);
+        if (end.type === 'pointercancel' || end.clientX === startX) {
+          imgWrapper.style.width = width + 'px';
+          return;
         }
+        onMove(end);
+        this.onImageResize?.(node.id, idx, targetWidth, targetWidth * img.naturalHeight / img.naturalWidth);
       };
-
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onEnd);
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onEnd);
-      window.addEventListener('touchmove', onMove, { passive: true });
-      window.addEventListener('touchend', onEnd);
-    };
-
-    imgResizeHandle.addEventListener('mousedown', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      initImgResize(e.clientX, e.clientY);
+      imgResizeHandle.setPointerCapture(event.pointerId);
+      imgResizeHandle.addEventListener('pointermove', onMove);
+      imgResizeHandle.addEventListener('pointerup', finish);
+      imgResizeHandle.addEventListener('pointercancel', finish);
     });
-
-    imgResizeHandle.addEventListener('touchstart', (e) => {
-      e.stopPropagation();
-      if (e.touches && e.touches[0]) {
-        initImgResize(e.touches[0].clientX, e.touches[0].clientY);
-      }
-    }, { passive: true });
+    // Keep the node drag handlers out of touch and compatibility mouse events.
+    for (const type of ['mousedown', 'touchstart', 'touchend', 'click']) {
+      imgResizeHandle.addEventListener(type, event => event.stopPropagation());
+    }
 
     return imgWrapper;
   }
